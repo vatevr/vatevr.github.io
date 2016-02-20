@@ -1,4 +1,4 @@
-/* -------------------------------- 
+/* --------------------------------
 
 Primary style
 
@@ -34,7 +34,7 @@ a {
   color: transparent;
 }
 
-/* -------------------------------- 
+/* --------------------------------
 
 Navigation trigger - visible on small devices only
 
@@ -98,7 +98,7 @@ Navigation trigger - visible on small devices only
   }
 }
 
-/* -------------------------------- 
+/* --------------------------------
 
 Vertical navigation
 
@@ -390,7 +390,7 @@ Vertical navigation
   }
 }
 
-/* -------------------------------- 
+/* --------------------------------
 
 Content Sections - basic style
 
@@ -405,6 +405,10 @@ Content Sections - basic style
 .cd-section:nth-of-type(even) {
   background-color: #70557e;
 }
+#section1 {
+    background-image: linear-gradient(rgba(112,85,116,0.8),rgba(112,85,116,0.8)), url('/Users/John/Documents/GitHub/vatevr.github.io/GevorgPrototype/img/Gevorg.JPG');
+    background-size: 100%;
+}
 .cd-section > div {
   /* vertically align <div> inside <section> */
   display: table-cell;
@@ -417,9 +421,12 @@ Content Sections - basic style
   text-transform: uppercase;
   font-size: 2.4rem;
   line-height: 1.4;
+  font-weight: 800;
 }
 .cd-section h1 b, .cd-section h2 b {
-  color: #584c5e;
+  color: #ececec;
+  opacity: 0.3;
+  font-weight: 100;
 }
 .cd-section p {
   margin: 1em auto 0;
@@ -452,7 +459,7 @@ Content Sections - basic style
   background: url(../img/cd-arrow-bottom.svg) no-repeat center center;
 }
 
-/* -------------------------------- 
+/* --------------------------------
 
 no-js
 
