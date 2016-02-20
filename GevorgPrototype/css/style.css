@@ -406,7 +406,7 @@ Content Sections - basic style
   background-color: #70557e;
 }
 #section1 {
-    background-image: linear-gradient(rgba(112,85,116,0.8),rgba(112,85,116,0.8)), url('/Users/John/Documents/GitHub/vatevr.github.io/GevorgPrototype/img/Gevorg.JPG');
+    background-image: linear-gradient(rgba(112,85,116,0.8),rgba(112,85,116,0.8)), url('../img/Gevorg.JPG');
     background-size: 100%;
 }
 .cd-section > div {
