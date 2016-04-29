@@ -1,0 +1,106 @@
+body {
+  height: 100%;
+  background: url("../images/default.jpg") no-repeat;
+  transition: background ease-in-out 1s;
+  color: #fff;
+  font-family: "Lato","Helvetica Neue",Helvetica,Arial,sans-serif;
+}
+
+/* Preload images */
+body:after {
+  display: none;
+  content:
+    url("../images/default.jpg")
+    url("../images/day-clear.jpg")
+    url("../images/cloudy.jpg")
+    url("../images/rainy.jpg")
+    url("../images/thunderstorm.jpg")
+    url("../images/foggy.jpg")
+    url("../images/night-clear.jpg")
+    url("../images/night-cloudy.jpg");
+}
+
+/* Background styles */
+.default {
+  background: url("../images/default.jpg") no-repeat center center fixed;
+  background-size: cover;
+}
+
+.day-clear {
+  background: url("../images/day-clear.jpg") no-repeat center center fixed;
+  background-size: cover;
+}
+
+.night-clear {
+  background: url("../images/night-clear.jpg") no-repeat center center fixed;
+  background-size: cover;
+}
+
+.night-cloudy {
+  background: url("../images/night-cloudy.jpg") no-repeat center center fixed;
+  background-size: cover;
+}
+
+.cloudy {
+  background: url("../images/cloudy.jpg") no-repeat center center fixed;
+  background-size: cover;
+}
+
+.rainy {
+  background: url("../images/rainy.jpg") no-repeat center center fixed;
+  background-size: cover;
+}
+
+.thunderstorm {
+  background: url("../images/thunderstorm.jpg") no-repeat center center fixed;
+  background-size: cover;
+}
+
+.foggy {
+  background: url("../images/foggy.jpg") no-repeat center center fixed;
+  background-size: cover;
+}
+
+/* centered columns styles */
+.row-centered {
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+
+.col-centered {
+  display: inline-block;
+  float: none;
+}
+
+.col-min {
+  min-width: 110px;
+}
+
+.fixed {
+  width: 41%;
+}
+
+.top-buffer {
+  margin-top: 100px;
+}
+
+.bottom-buffer {
+  margin-bottom: 5px;
+}
+
+div.forecast-item {
+  margin-right: 10px;
+  margin-bottom: 10px;
+  background-color: rgba(0,0,0,0.1);
+  border-radius: 10px;
+}
+
+/* Animations */
+.forecast-animate.ng-enter, .forecast-animate.ng-hide-remove {
+  animation: zoomIn 1s;
+}
+
+.forecast-animate.ng-leave, .forecast-animate.ng-hide-add {
+  animation: zoomOut 1s;
+}

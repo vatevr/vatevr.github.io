@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang='ru'>
+  <head>
+    <meta charset="utf-8">
+    <title>Простой минималистский пример сложного JavaScript приложения</title>
+    <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+    <script type="text/javascript" src="http://powerman.name/download/js/POWER.js"></script>
+    <!-- Widgets -->
+    <script type="text/javascript" src="widgets\w.addphrase.js"></script>
+    <script type="text/javascript" src="widgets\w.phrase.js"></script>
+  </head>
+  <body>
+    <script type="text/javascript" src='event-dispatcher.js'></script>
+    <!-- html code and js templates -->
+
+    <form id="addphrase">
+        Добавить фразу։ <input type="text">
+    </form>
+    <div id="phrases">
+        <p>
+          <script type="text/x-tmpl" id="tmpl_phrase">
+          <div>
+            <%= phrase %>
+            <span class="handlers"></span>
+          </div>
+          </script>
+    </div>
+  </body>
+</html>
