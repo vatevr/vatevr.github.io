@@ -14,7 +14,7 @@
         this.x = x;
         this.y = y;
 
-        this.vel = Math.randomF(-100, 100);
+        this.vel = Math.randomF(-4, 4);
 
         this.vel = {
           x : this.vel,
