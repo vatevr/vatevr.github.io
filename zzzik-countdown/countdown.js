@@ -23,7 +23,7 @@ function showCountdown(diff) {
 }
 
 function updateTimer() {
-    const future = Date.parse("February 25, 2022 06:30:00");
+    const future = Date.parse("March 20, 2022 06:30:00");
     const now = new Date();
     const diff = future - now;
 
