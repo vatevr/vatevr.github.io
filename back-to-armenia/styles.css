@@ -1,15 +1,23 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
-
 body {
     font-family: 'Inter', sans-serif;
     margin: 0;
     padding: 0;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     height: 100vh;
     background-color: #f9e5d8; /* Pastel background color */
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><text x="0" y="30" class="emoji" font-family="Segoe UI Emoji, Arial, sans-serif" font-size="24">🪖</text><text x="90" y="120" class="emoji" font-family="Segoe UI Emoji, Arial, sans-serif" font-size="24">💸</text></svg>');
+    background-repeat: repeat;
+    background-size: auto;
+}
+
+.card {
+    background-color: white;
+    border-radius: 15px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    text-align: center;
 }
 
 #progress-bar-container {
@@ -19,18 +27,27 @@ body {
 
 #progress-bar {
     height: 20px;
-    background-color: #4CAF50; /* Progress bar color */
+    background-color: #4CAF50;
     border-radius: 10px;
     margin-bottom: 10px;
     width: 70%;
+    max-width: 400px;
 }
 
 #progress-bar-text {
     font-size: 1.5em;
     color: #555;
+    margin-bottom: 10px;
 }
 
-#savings, #remaining-days, #savings-per-day {
+#motivational-text {
+    font-size: 1.8em;
+    color: #333;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+#savings, #remaining-days, #savings-per-day, #remaining-amount {
     font-size: 2em;
     margin-bottom: 10px;
     color: #333;

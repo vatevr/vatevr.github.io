@@ -4,6 +4,11 @@ let target = null;
 const url = 'https://e0jzl6ej38.execute-api.us-east-1.amazonaws.com/production/savings-api';
 
 async function readSavings() {
+    const debug = localStorage.getItem('debug');
+    console.log(debug);
+    if (debug) {
+        return { value: 101, target: 1000 };
+    }
     const body = JSON.stringify({});
     const response = await fetch(url, {
         method: 'PUT',
