@@ -1,20 +1,49 @@
+let savings = null;
+let target = null;
 
-const objective = 18500;
-let savings = 0;
+const url = 'https://e0jzl6ej38.execute-api.us-east-1.amazonaws.com/production/savings-api';
 
-function loadFromDB(callback) {
-    // Simulating loading from IndexedDB, replace with actual implementation if needed
-    setTimeout(() => {
-        callback(savings);
-    }, 100);
+async function readSavings() {
+    const body = JSON.stringify({});
+    const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            "Access-Control-Allow-Credentials": true,
+            "Access-Control-Request-Headers": "X-Requested-With",
+        },
+        body
+    });
+
+    if (!response.ok) {
+        throw new Error('Network response was not ok');
+    }
+
+    const data = await response.json();
+    console.log(data);
+    return data;
 }
 
-function saveToDB(value, callback) {
-    // Simulating saving to IndexedDB, replace with actual implementation if needed
-    setTimeout(() => {
-        savings = value;
-        callback();
-    }, 100);
+async function save(amount) {
+    let body = JSON.stringify({amount});
+    const response = await fetch('https://e0jzl6ej38.execute-api.us-east-1.amazonaws.com/production/savings-api', {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Credentials": true, // Required for cookies, authorization headers with HTTPS
+        },
+        body
+    });
+
+    if (!response.ok) {
+        throw new Error('Network response was not ok');
+    }
+
+    const data = await response.json();
+    console.log(data);
+    return data;
+
 }
 
 function calculateRemainingDays() {
@@ -27,10 +56,10 @@ function calculateRemainingDays() {
 
 function calculateSavingsPerDay() {
     const remainingDays = calculateRemainingDays();
-    return remainingDays > 0 ? (objective - savings) / remainingDays : 0;
+    return remainingDays > 0 ? (target - savings) / remainingDays : 0;
 }
 
-function displaySavingsInfo() {
+async function displaySavingsInfo() {
     const savingsDisplay = document.getElementById('savings');
     const remainingAmountDisplay = document.getElementById('remaining-amount');
     const remainingDaysDisplay = document.getElementById('remaining-days');
@@ -38,40 +67,34 @@ function displaySavingsInfo() {
     const progressBar = document.getElementById('progress-bar');
     const progressBarText = document.getElementById('progress-bar-text');
 
-    loadFromDB(function (result) {
-        savings = result || 0;
-        const remainingAmount = objective - savings;
-        const remainingDays = calculateRemainingDays();
-        const savingsPerDay = calculateSavingsPerDay();
-        const progressPercentage = (savings / objective) * 100;
+    const response = await readSavings();
 
-        savingsDisplay.innerText = savings.toFixed(2);
-        remainingAmountDisplay.innerText = remainingAmount.toFixed(2);
-        remainingDaysDisplay.innerText = remainingDays;
-        savingsPerDayDisplay.innerText = savingsPerDay.toFixed(2);
+    savings = response.value;
+    target = response.target;
+    const remainingAmount = target - savings;
+    const remainingDays = calculateRemainingDays();
+    const savingsPerDay = calculateSavingsPerDay();
+    const progressPercentage = (savings / target) * 100;
 
-        progressBar.style.width = `${progressPercentage}%`;
-        progressBarText.innerText = `Progress: ${progressPercentage.toFixed(2)}%`;
-    });
+    savingsDisplay.innerText = savings.toFixed(2);
+    remainingAmountDisplay.innerText = remainingAmount.toFixed(2);
+    remainingDaysDisplay.innerText = remainingDays;
+    savingsPerDayDisplay.innerText = savingsPerDay.toFixed(2);
+
+    progressBar.style.width = `${progressPercentage}%`;
+    progressBarText.innerText = `Progress: ${progressPercentage.toFixed(2)}%`;
 }
 
-function saveMoney() {
+async function saveMoney() {
     const amountInput = document.getElementById('amount');
     const amount = parseFloat(amountInput.value) || 0;
 
     if (amount > 0) {
-        loadFromDB(function (result) {
-            const currentSavings = result || 0;
-            const newSavings = currentSavings + amount;
-
-            saveToDB(newSavings, function () {
-                displaySavingsInfo();
-                amountInput.value = ''; // Clear input after saving
-                confetti(); // Celebrate the savings!
-            });
-        });
+        await save(amount);
+        displaySavingsInfo();
+        amountInput.value = ''; // Clear input after saving
+        confetti();
     }
 }
 
-// Initial display on page load
 displaySavingsInfo();
