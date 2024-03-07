@@ -1,5 +1,6 @@
 let savings = null;
 let target = null;
+let loading = false;
 
 const url = 'https://e0jzl6ej38.execute-api.us-east-1.amazonaws.com/production/savings-api';
 
@@ -7,7 +8,7 @@ async function readSavings() {
     const debug = localStorage.getItem('debug');
     console.log(debug);
     if (debug) {
-        return { value: 101, target: 1000 };
+        return {value: 101, target: 1000};
     }
     const body = JSON.stringify({});
     const response = await fetch(url, {
@@ -65,29 +66,37 @@ function calculateSavingsPerDay() {
 }
 
 async function displaySavingsInfo() {
-    const savingsDisplay = document.getElementById('savings');
-    const remainingAmountDisplay = document.getElementById('remaining-amount');
-    const remainingDaysDisplay = document.getElementById('remaining-days');
-    const savingsPerDayDisplay = document.getElementById('savings-per-day');
-    const progressBar = document.getElementById('progress-bar');
-    const progressBarText = document.getElementById('progress-bar-text');
+    loading = true;
+    updateLoading();
+    try {
+        const savingsDisplay = document.getElementById('savings');
+        const remainingAmountDisplay = document.getElementById('remaining-amount');
+        const remainingDaysDisplay = document.getElementById('remaining-days');
+        const savingsPerDayDisplay = document.getElementById('savings-per-day');
+        const progressBar = document.getElementById('progress-bar');
+        const progressBarText = document.getElementById('progress-bar-text');
+        const response = await readSavings();
 
-    const response = await readSavings();
+        savings = response.value;
+        target = response.target;
+        const remainingAmount = target - savings;
+        const remainingDays = calculateRemainingDays();
+        const savingsPerDay = calculateSavingsPerDay();
+        const progressPercentage = (savings / target) * 100;
 
-    savings = response.value;
-    target = response.target;
-    const remainingAmount = target - savings;
-    const remainingDays = calculateRemainingDays();
-    const savingsPerDay = calculateSavingsPerDay();
-    const progressPercentage = (savings / target) * 100;
+        savingsDisplay.innerText = savings.toFixed(2);
+        remainingAmountDisplay.innerText = remainingAmount.toFixed(2);
+        remainingDaysDisplay.innerText = remainingDays;
+        savingsPerDayDisplay.innerText = savingsPerDay.toFixed(2);
 
-    savingsDisplay.innerText = savings.toFixed(2);
-    remainingAmountDisplay.innerText = remainingAmount.toFixed(2);
-    remainingDaysDisplay.innerText = remainingDays;
-    savingsPerDayDisplay.innerText = savingsPerDay.toFixed(2);
-
-    progressBar.style.width = `${progressPercentage}%`;
-    progressBarText.innerText = `Progress: ${progressPercentage.toFixed(2)}%`;
+        progressBar.style.width = `${progressPercentage}%`;
+        progressBarText.innerText = `Progress: ${progressPercentage.toFixed(2)}%`;
+    } catch (e) {
+        console.log(e);
+    } finally {
+        loading = false;
+        updateLoading();
+    }
 }
 
 async function saveMoney() {
@@ -95,6 +104,7 @@ async function saveMoney() {
     const amount = parseFloat(amountInput.value) || 0;
 
     if (amount > 0) {
+        loading = true;
         await save(amount);
         displaySavingsInfo();
         amountInput.value = ''; // Clear input after saving
@@ -102,4 +112,12 @@ async function saveMoney() {
     }
 }
 
-displaySavingsInfo();
+
+function updateLoading() {
+    const loadingContainer = document.getElementById('loadingContainer');
+    loadingContainer.style.display = loading ? 'flex' : 'none';
+}
+
+setTimeout(() => {
+    displaySavingsInfo();
+},  Math.floor(Math.random() * (2001 - 350) + 350));
