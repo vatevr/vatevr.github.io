@@ -5,33 +5,108 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Coming back home</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css" rel="stylesheet"/>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪖</text></svg>">
 </head>
 <body>
-<div class="card">
-    <div class="loading-container" id="loadingContainer">
-        <div class="rotating-emoji">🪖</div>
-        <div class="rotating-emoji">💸</div>
-    </div>
+<div class="loading-container" id="loadingContainer">
+    <div class="rotating-emoji">🪖</div>
+    <div class="rotating-emoji">💸</div>
+</div>
 
-    <div class="loaded-content">
-        <p id="motivational-text">Keep going! Every step brings you closer to your savings goal.</p>
-        <div id="progress-bar-container">
-            <p id="progress-bar-text">Progress: ...%</p>
-            <div id="progress-bar"></div>
+<div class="loaded-content">
+    <div class="max-w-sm bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+        <div class="p-5">
+            <h5 id="motivational-quote" class="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+            </h5>
+        </div>
+        <div class="p-6">
+            <div class="w-full bg-gray-200 rounded-full dark:bg-gray-700">
+                <div id="progress-bar" class="bg-blue-600 text-xs font-medium text-blue-100 text-center p-0.5 leading-none rounded-full"
+                     style="width: 0%">
+                </div>
+            </div>
+        </div>
+        <div class="p-5">
+
+            <div class="flow-root">
+                <ul role="list" class="divide-y divide-gray-200 dark:divide-gray-700">
+                    <li class="py-3 sm:py-4">
+                        <div class="flex items-center">
+                            <div class="flex-1 min-w-0 ms-4">
+                                <p class="text-sm font-medium text-gray-900 truncate dark:text-white">
+                                    Remaining amount
+                                </p>
+                            </div>
+                            <div id="remaining-amount" class="inline-flex items-center text-base font-semibold text-gray-900 dark:text-white">
+                                ...
+                            </div>
+                        </div>
+                    </li>
+                    <li class="py-3 sm:py-4">
+                        <div class="flex items-center ">
+                            <div class="flex-1 min-w-0 ms-4">
+                                <p class="text-sm font-medium text-gray-900 truncate dark:text-white">
+                                    Actual savings
+                                </p>
+                            </div>
+                            <div id="savings" class="inline-flex items-center text-base font-semibold text-gray-900 dark:text-white">
+                                ...
+                            </div>
+                        </div>
+                    </li>
+                    <li class="py-3 sm:py-4">
+                        <div class="flex items-center ">
+                            <div class="flex-1 min-w-0 ms-4">
+                                <p class="text-sm font-medium text-gray-900 truncate dark:text-white">
+                                    Remaining days
+                                </p>
+                                <p class="text-sm text-gray-500 truncate dark:text-gray-400">
+                                    until 1st July 2024
+                                </p>
+                            </div>
+                            <div id="remaining-days" class="inline-flex items-center text-base font-semibold text-gray-900 dark:text-white">
+                                ...
+                            </div>
+                        </div>
+                    </li>
+                    <li class="py-3 sm:py-4">
+                        <div class="flex items-center ">
+                            <div class="flex-1 min-w-0 ms-4">
+                                <p class="text-sm font-medium text-gray-900 truncate dark:text-white">
+                                    Savings per day
+                                </p>
+                                <p class="text-sm text-gray-500 truncate dark:text-gray-400">
+                                    to reach the target by 1st July 2024
+                                </p>
+                            </div>
+                            <div id="savings-per-day" class="inline-flex items-center text-base font-semibold text-gray-900 dark:text-white">
+                                ...
+                            </div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
         </div>
 
-        <p>Savings: <span id="savings">...</span> 💶</p>
-        <p>Remaining Amount: <span id="remaining-amount">...</span> 💶</p>
-        <p>Remaining Days: <span id="remaining-days">...</span></p>
-        <p>Savings per Day: <span id="savings-per-day">...</span> 💶</p>
-
-        <input type="text" id="amount" placeholder="jiggle jiggle..">
-        <button onclick="saveMoney()">Save</button>
+        <div class="p-5">
+            <form class="max-w-sm mx-auto">
+                <label for="amount" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"></label>
+                <input type="number" id="amount" aria-describedby="helper-text-explanation"
+                       class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                       placeholder="Jiggle Jiggle...  🪙" required/>
+            </form>
+        </div>
+        <div class="p-5">
+            <a href="#" onclick="saveMoney()"
+               class="inline-flex items-center px-3 py-2 text-sm font-medium text-center text-white bg-blue-700 rounded-lg hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">
+                Enter your savings
+            </a>
+        </div>
     </div>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/canvas-confetti"></script>
+</div><script src="https://cdn.jsdelivr.net/npm/canvas-confetti"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
 <script src="script.js"></script>
 </body>
 </html>

@@ -4,6 +4,11 @@ let loading = false;
 
 const url = 'https://e0jzl6ej38.execute-api.us-east-1.amazonaws.com/production/savings-api';
 
+const motivationalQuotes = [
+    "I don't want no teen-aged queen, I just want my M-14",
+    "I don't know but I've been told, Eskimo pussy is mighty cold",
+    "I signed up for thrills, but I'm climbing this hill"
+]
 async function readSavings() {
     const debug = localStorage.getItem('debug');
     console.log(debug);
@@ -31,6 +36,11 @@ async function readSavings() {
 }
 
 async function save(amount) {
+    const debug = localStorage.getItem('debug');
+    console.log(debug);
+    if (debug) {
+        return {value: savings + amount, target: target - amount};
+    }
     let body = JSON.stringify({amount});
     const response = await fetch('https://e0jzl6ej38.execute-api.us-east-1.amazonaws.com/production/savings-api', {
         method: 'PUT',
@@ -65,16 +75,21 @@ function calculateSavingsPerDay() {
     return remainingDays > 0 ? (target - savings) / remainingDays : 0;
 }
 
+function chooseQuote() {
+    return motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)];
+}
+
 async function displaySavingsInfo() {
     loading = true;
     updateLoading();
     try {
+        const motivationalQuote = document.getElementById('motivational-quote');
+        motivationalQuote.innerText = chooseQuote();
         const savingsDisplay = document.getElementById('savings');
         const remainingAmountDisplay = document.getElementById('remaining-amount');
         const remainingDaysDisplay = document.getElementById('remaining-days');
         const savingsPerDayDisplay = document.getElementById('savings-per-day');
         const progressBar = document.getElementById('progress-bar');
-        const progressBarText = document.getElementById('progress-bar-text');
         const response = await readSavings();
 
         savings = response.value;
@@ -84,13 +99,15 @@ async function displaySavingsInfo() {
         const savingsPerDay = calculateSavingsPerDay();
         const progressPercentage = (savings / target) * 100;
 
-        savingsDisplay.innerText = savings.toFixed(2);
-        remainingAmountDisplay.innerText = remainingAmount.toFixed(2);
+        savingsDisplay.innerText = `€${savings.toFixed(1)}`;
+        remainingAmountDisplay.innerText = `€${remainingAmount.toFixed(1)}`;
         remainingDaysDisplay.innerText = remainingDays;
-        savingsPerDayDisplay.innerText = savingsPerDay.toFixed(2);
+        savingsPerDayDisplay.innerText = `€${savingsPerDay.toFixed(1)}`;
 
         progressBar.style.width = `${progressPercentage}%`;
-        progressBarText.innerText = `Progress: ${progressPercentage.toFixed(2)}%`;
+        if (progressPercentage > 25) {
+            progressBar.innerText = `${progressPercentage.toFixed(1)}%`;
+        }
     } catch (e) {
         console.log(e);
     } finally {
@@ -120,4 +137,4 @@ function updateLoading() {
 
 setTimeout(() => {
     displaySavingsInfo();
-},  Math.floor(Math.random() * (2001 - 350) + 350));
+}, Math.floor(Math.random() * (2001 - 350) + 350));
