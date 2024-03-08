@@ -108,6 +108,7 @@ async function displaySavingsInfo() {
         if (progressPercentage > 25) {
             progressBar.innerText = `${progressPercentage.toFixed(1)}%`;
         }
+
     } catch (e) {
         console.log(e);
     } finally {
