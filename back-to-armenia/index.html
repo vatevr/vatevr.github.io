@@ -108,5 +108,54 @@
 </div><script src="https://cdn.jsdelivr.net/npm/canvas-confetti"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.js"></script>
 <script src="script.js"></script>
+<style>
+    #chat-widget-container {
+        font-family: 'Helvetica', 'Arial', Courier, monospace;
+        position: fixed;
+        bottom: 80px;
+        right: 20px;
+        background-color: #fff;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+        box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
+        width: 300px;
+        height: 500px;
+        display: none;
+    }
+
+    /* Button styling */
+    #chat-widget-button {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background-color: #007bff;
+        color: #fff;
+        border: none;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        line-height: 50px;
+        text-align: center;
+        font-size: 12px;
+        cursor: pointer;
+        font-family: 'Helvetica', 'Arial', Courier, monospace;
+        font-weight: 100;
+    }
+</style>
+<script src="https://a.messageflow.ai/live_chat/chat_v3.js"></script>
+<script>
+    const liveChatWidget = new LiveChatWidget({
+        host:  "https://staging.a.messageflow.ai", // the host of the livechat
+        uid: "377901a49aac0e6c5e65fc5da08b200ac2835f43", // identifies the livechat instance
+        css_url: "https://staging.a.messageflow.ai/live_chat/chat.css", //provide your own css if you want
+        show_question: false, // false shows only the chat window, otherwise also a Question and answer is shown
+        button_title: "Bot", //the text inside the button that will be create, not needed if button_element is provided, then no button is created
+        // button_element: document.getElementById('mybutton'), // use this html element as button to open the chat window. An onclick listener is added to this element
+        external_id: "live_chat_1", //identifies this livechat widget, you must set it, helps you to distinguish multiple chat windows on one page, this is set as external_id on the conversation
+        //position_chat_window: {left: "100px",bottom: "200px"}, //position the chat window left and bottom, top and right not yet implemented.
+        chat_title: "Assistant", // sets the title of the chat window
+    });
+</script>
+
 </body>
 </html>
