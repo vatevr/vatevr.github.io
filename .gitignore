@@ -3,3 +3,9 @@
 
 .DS_Store
 
+# focus-city react app
+focus-city-app/node_modules/
+focus-city-app/dist/
+focus-city-app/.vite/
+focus-city-legacy/
+
