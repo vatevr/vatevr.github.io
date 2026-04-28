@@ -81,12 +81,17 @@ export type AmbientTrack =
   | 'night'
   | 'drones'
 
+export type MusicTrack = 'landscape' | 'wanderer' | 'embers'
+
 export interface Settings {
   musicOn: boolean
   volume: number
   sfxOn: boolean
   ambientTrack: AmbientTrack
   strictMode: boolean
+  focusMusicOn: boolean
+  focusMusicTrack: MusicTrack
+  focusMusicVolume: number
 }
 
 export interface UserState {

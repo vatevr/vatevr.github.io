@@ -68,153 +68,344 @@ interface ProcHandle { stop: () => void }
 
 function procRain(): ProcHandle {
   const c = getCtx()
-  const buffer = makeNoiseBuffer(4, 'pink')
+  // Wet hiss bed with soft swell — pink noise band-limited to drizzle range
+  const buffer = makeNoiseBuffer(6, 'pink')
   const src = c.createBufferSource()
   src.buffer = buffer; src.loop = true
-  const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200
-  const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 200
-  const g = c.createGain(); g.gain.value = 0.55
-  src.connect(hp).connect(lp).connect(g).connect(masterGain!)
+  const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 320
+  const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5800
+  const bedG = c.createGain(); bedG.gain.value = 0.42
+  src.connect(hp).connect(lp).connect(bedG).connect(masterGain!)
   src.start()
+  // Slow density LFO so the rain ebbs and surges
+  const lfo = c.createOscillator(), lfoG = c.createGain()
+  lfo.frequency.value = 0.07; lfoG.gain.value = 0.18
+  lfo.connect(lfoG).connect(bedG.gain); lfo.start()
+  // Discrete droplets — pings with random spread, each band-pass'd to give the
+  // characteristic hollow "tap" of water hitting a hard surface
+  const droplet = () => {
+    const buf = makeNoiseBuffer(0.04, 'white')
+    const s = c.createBufferSource(); s.buffer = buf
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'
+    bp.frequency.value = 1800 + Math.random() * 3200; bp.Q.value = 8
+    const dg = c.createGain()
+    const t0 = c.currentTime
+    dg.gain.setValueAtTime(0.0001, t0)
+    dg.gain.exponentialRampToValueAtTime(0.18 + Math.random() * 0.12, t0 + 0.002)
+    dg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.05)
+    s.connect(bp).connect(dg).connect(masterGain!); s.start(); s.stop(t0 + 0.06)
+  }
   const t = window.setInterval(() => {
-    const o = c.createOscillator(), og = c.createGain()
-    o.frequency.value = 800 + Math.random() * 1400; o.type = 'sine'
-    og.gain.setValueAtTime(0.0001, c.currentTime)
-    og.gain.exponentialRampToValueAtTime(0.05, c.currentTime + 0.005)
-    og.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.06)
-    o.connect(og).connect(masterGain!); o.start(); o.stop(c.currentTime + 0.07)
-  }, 220)
-  return { stop: () => { window.clearInterval(t); try { src.stop() } catch {} } }
+    const burst = 1 + Math.floor(Math.random() * 3)
+    for (let i = 0; i < burst; i++) {
+      window.setTimeout(droplet, Math.random() * 80)
+    }
+  }, 130)
+  return { stop: () => {
+    window.clearInterval(t)
+    try { src.stop() } catch { /* already stopped */ }
+    try { lfo.stop() } catch { /* already stopped */ }
+  } }
 }
 
 function procThunder(): ProcHandle {
   const rain = procRain()
   const c = getCtx()
+  const strike = () => {
+    const t0 = c.currentTime
+    // Lightning crack — short bright noise burst before the rumble
+    const crackBuf = makeNoiseBuffer(0.4, 'white')
+    const crack = c.createBufferSource(); crack.buffer = crackBuf
+    const crackBp = c.createBiquadFilter(); crackBp.type = 'bandpass'
+    crackBp.frequency.value = 3200; crackBp.Q.value = 0.7
+    const crackG = c.createGain()
+    crackG.gain.setValueAtTime(0.0001, t0)
+    crackG.gain.exponentialRampToValueAtTime(0.45, t0 + 0.01)
+    crackG.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35)
+    crack.connect(crackBp).connect(crackG).connect(masterGain!)
+    crack.start(t0); crack.stop(t0 + 0.4)
+    // Deep rumble — slow swell of brown noise with two staggered tails
+    const rumbleStart = t0 + 0.05
+    const len = 3.2 + Math.random() * 1.5
+    const rb = makeNoiseBuffer(len, 'brown')
+    const r = c.createBufferSource(); r.buffer = rb
+    const rlp = c.createBiquadFilter(); rlp.type = 'lowpass'; rlp.frequency.value = 140
+    const rg = c.createGain()
+    rg.gain.setValueAtTime(0.0001, rumbleStart)
+    rg.gain.exponentialRampToValueAtTime(0.7, rumbleStart + 0.5)
+    rg.gain.exponentialRampToValueAtTime(0.18, rumbleStart + len * 0.6)
+    rg.gain.exponentialRampToValueAtTime(0.0001, rumbleStart + len)
+    r.connect(rlp).connect(rg).connect(masterGain!)
+    r.start(rumbleStart); r.stop(rumbleStart + len + 0.1)
+  }
   const t = window.setInterval(() => {
-    if (Math.random() > 0.18) return
-    const buffer = makeNoiseBuffer(2.5, 'brown')
-    const src = c.createBufferSource(); src.buffer = buffer
-    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180
-    const g = c.createGain()
-    g.gain.setValueAtTime(0.0001, c.currentTime)
-    g.gain.exponentialRampToValueAtTime(0.5, c.currentTime + 0.4)
-    g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 2.4)
-    src.connect(lp).connect(g).connect(masterGain!); src.start(); src.stop(c.currentTime + 2.5)
-  }, 4000)
+    if (Math.random() < 0.22) strike()
+  }, 5500)
   return { stop: () => { rain.stop(); window.clearInterval(t) } }
 }
 
 function procWind(): ProcHandle {
   const c = getCtx()
+  // Body: brown noise through a sweeping bandpass — that's the whoosh
+  const buffer = makeNoiseBuffer(8, 'brown')
+  const src = c.createBufferSource(); src.buffer = buffer; src.loop = true
+  const bp = c.createBiquadFilter(); bp.type = 'bandpass'
+  bp.frequency.value = 480; bp.Q.value = 0.5
+  const g = c.createGain(); g.gain.value = 0.55
+  src.connect(bp).connect(g).connect(masterGain!); src.start()
+  // Two staggered LFOs — different rates produce irregular gusts instead of
+  // a metronome wobble
+  const lfoA = c.createOscillator(), lfoAG = c.createGain()
+  lfoA.frequency.value = 0.08; lfoAG.gain.value = 320
+  lfoA.connect(lfoAG).connect(bp.frequency); lfoA.start()
+  const lfoB = c.createOscillator(), lfoBG = c.createGain()
+  lfoB.frequency.value = 0.21; lfoBG.gain.value = 0.25
+  lfoB.connect(lfoBG).connect(g.gain); lfoB.start()
+  // Higher whistle layer — thin filtered noise for treetop hiss
+  const whBuf = makeNoiseBuffer(5, 'pink')
+  const wh = c.createBufferSource(); wh.buffer = whBuf; wh.loop = true
+  const whBp = c.createBiquadFilter(); whBp.type = 'bandpass'
+  whBp.frequency.value = 2400; whBp.Q.value = 4
+  const whG = c.createGain(); whG.gain.value = 0.05
+  wh.connect(whBp).connect(whG).connect(masterGain!); wh.start()
+  const whLfo = c.createOscillator(), whLfoG = c.createGain()
+  whLfo.frequency.value = 0.13; whLfoG.gain.value = 0.06
+  whLfo.connect(whLfoG).connect(whG.gain); whLfo.start()
+  return { stop: () => {
+    [src, lfoA, lfoB, wh, whLfo].forEach(n => { try { n.stop() } catch { /* stopped */ } })
+  } }
+}
+
+function procForest(): ProcHandle {
+  const c = getCtx()
+  // Leaf rustle bed — brown noise through a low-mid bandpass for foliage
+  const buffer = makeNoiseBuffer(8, 'brown')
+  const src = c.createBufferSource(); src.buffer = buffer; src.loop = true
+  const bp = c.createBiquadFilter(); bp.type = 'bandpass'
+  bp.frequency.value = 1100; bp.Q.value = 0.6
+  const g = c.createGain(); g.gain.value = 0.22
+  src.connect(bp).connect(g).connect(masterGain!); src.start()
+  const lfo = c.createOscillator(), lfoG = c.createGain()
+  lfo.frequency.value = 0.18; lfoG.gain.value = 0.08
+  lfo.connect(lfoG).connect(g.gain); lfo.start()
+  // Bird call generator — multi-syllable warbles, not a single chirp.
+  // Picks one of three "species" per call so the forest sounds populated.
+  const species = [
+    { syllables: 3, base: 2400, range: 900, gap: 0.07, sweep: 1.25 }, // sparrow
+    { syllables: 2, base: 1700, range: 600, gap: 0.18, sweep: 0.7 },  // dove-ish
+    { syllables: 5, base: 3200, range: 1400, gap: 0.05, sweep: 1.5 }, // warbler
+  ]
+  const callBird = () => {
+    const sp = species[Math.floor(Math.random() * species.length)]
+    const t0 = c.currentTime + Math.random() * 0.05
+    for (let i = 0; i < sp.syllables; i++) {
+      const start = t0 + i * sp.gap
+      const o = c.createOscillator(), og = c.createGain()
+      o.type = 'sine'
+      const base = sp.base + (Math.random() - 0.5) * sp.range
+      o.frequency.setValueAtTime(base, start)
+      o.frequency.linearRampToValueAtTime(base * sp.sweep, start + sp.gap * 0.7)
+      og.gain.setValueAtTime(0.0001, start)
+      og.gain.exponentialRampToValueAtTime(0.08, start + 0.01)
+      og.gain.exponentialRampToValueAtTime(0.0001, start + sp.gap * 0.95)
+      o.connect(og).connect(masterGain!)
+      o.start(start); o.stop(start + sp.gap)
+    }
+  }
+  const t = window.setInterval(() => {
+    if (Math.random() < 0.35) callBird()
+  }, 1100)
+  return { stop: () => {
+    [src, lfo].forEach(n => { try { n.stop() } catch { /* stopped */ } })
+    window.clearInterval(t)
+  } }
+}
+
+function procFireplace(): ProcHandle {
+  const c = getCtx()
+  // Fire roar — low brown noise simmering
   const buffer = makeNoiseBuffer(6, 'brown')
   const src = c.createBufferSource(); src.buffer = buffer; src.loop = true
   const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600
   const g = c.createGain(); g.gain.value = 0.4
   src.connect(lp).connect(g).connect(masterGain!); src.start()
+  // Slow flicker on the roar
   const lfo = c.createOscillator(), lfoG = c.createGain()
-  lfo.frequency.value = 0.08; lfoG.gain.value = 400
-  lfo.connect(lfoG).connect(lp.frequency); lfo.start()
-  return { stop: () => { try { src.stop() } catch {}; try { lfo.stop() } catch {} } }
-}
-
-function procForest(): ProcHandle {
-  const c = getCtx()
-  const buffer = makeNoiseBuffer(5, 'pink')
-  const src = c.createBufferSource(); src.buffer = buffer; src.loop = true
-  const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500
-  const g = c.createGain(); g.gain.value = 0.25
-  src.connect(lp).connect(g).connect(masterGain!); src.start()
-  const t = window.setInterval(() => {
-    if (Math.random() > 0.35) return
-    const o = c.createOscillator(), og = c.createGain()
-    o.type = 'sine'
-    const base = 1800 + Math.random() * 1600
-    o.frequency.setValueAtTime(base, c.currentTime)
-    o.frequency.linearRampToValueAtTime(base * 1.4, c.currentTime + 0.12)
-    og.gain.setValueAtTime(0.0001, c.currentTime)
-    og.gain.exponentialRampToValueAtTime(0.07, c.currentTime + 0.02)
-    og.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.18)
-    o.connect(og).connect(masterGain!); o.start(); o.stop(c.currentTime + 0.2)
-  }, 1400)
-  return { stop: () => { try { src.stop() } catch {}; window.clearInterval(t) } }
-}
-
-function procFireplace(): ProcHandle {
-  const c = getCtx()
-  const buffer = makeNoiseBuffer(4, 'brown')
-  const src = c.createBufferSource(); src.buffer = buffer; src.loop = true
-  const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 800
-  const g = c.createGain(); g.gain.value = 0.45
-  src.connect(lp).connect(g).connect(masterGain!); src.start()
-  const t = window.setInterval(() => {
-    if (Math.random() > 0.4) return
-    const buf = makeNoiseBuffer(0.05, 'white')
+  lfo.frequency.value = 0.4; lfoG.gain.value = 0.1
+  lfo.connect(lfoG).connect(g.gain); lfo.start()
+  // Crackles — bandpass'd white pops in clusters (not uniform), so it sounds
+  // like wood cracking rather than rain.
+  const crackle = () => {
+    const buf = makeNoiseBuffer(0.03, 'white')
     const s = c.createBufferSource(); s.buffer = buf
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'
+    bp.frequency.value = 1800 + Math.random() * 4000; bp.Q.value = 6
     const cg = c.createGain()
-    cg.gain.setValueAtTime(0.0001, c.currentTime)
-    cg.gain.exponentialRampToValueAtTime(0.18, c.currentTime + 0.005)
-    cg.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.05)
-    s.connect(cg).connect(masterGain!); s.start(); s.stop(c.currentTime + 0.06)
-  }, 200)
-  return { stop: () => { try { src.stop() } catch {}; window.clearInterval(t) } }
+    const t0 = c.currentTime
+    cg.gain.setValueAtTime(0.0001, t0)
+    cg.gain.exponentialRampToValueAtTime(0.25 + Math.random() * 0.2, t0 + 0.002)
+    cg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.04)
+    s.connect(bp).connect(cg).connect(masterGain!); s.start(t0); s.stop(t0 + 0.05)
+  }
+  const t = window.setInterval(() => {
+    // Occasional bigger pop, otherwise quiet small cracks
+    if (Math.random() < 0.08) {
+      const burst = 3 + Math.floor(Math.random() * 5)
+      for (let i = 0; i < burst; i++) window.setTimeout(crackle, Math.random() * 180)
+    } else if (Math.random() < 0.4) {
+      crackle()
+    }
+  }, 220)
+  return { stop: () => {
+    [src, lfo].forEach(n => { try { n.stop() } catch { /* stopped */ } })
+    window.clearInterval(t)
+  } }
 }
 
 function procRails(): ProcHandle {
   const c = getCtx()
-  const buffer = makeNoiseBuffer(6, 'brown')
+  // Carriage rumble — low brown noise + slow LFO so it sways
+  const buffer = makeNoiseBuffer(8, 'brown')
   const src = c.createBufferSource(); src.buffer = buffer; src.loop = true
-  const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220
-  const g = c.createGain(); g.gain.value = 0.45
+  const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260
+  const g = c.createGain(); g.gain.value = 0.4
   src.connect(lp).connect(g).connect(masterGain!); src.start()
-  let i = 0
-  const t = window.setInterval(() => {
-    const o = c.createOscillator(), og = c.createGain()
-    o.type = 'square'; o.frequency.value = i % 2 === 0 ? 90 : 70
-    og.gain.setValueAtTime(0.0001, c.currentTime)
-    og.gain.exponentialRampToValueAtTime(0.07, c.currentTime + 0.005)
-    og.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.05)
-    const fil = c.createBiquadFilter(); fil.type = 'bandpass'; fil.frequency.value = 180
-    o.connect(fil).connect(og).connect(masterGain!); o.start(); o.stop(c.currentTime + 0.06); i++
-  }, 380)
-  return { stop: () => { try { src.stop() } catch {}; window.clearInterval(t) } }
+  const sway = c.createOscillator(), swayG = c.createGain()
+  sway.frequency.value = 0.6; swayG.gain.value = 0.1
+  sway.connect(swayG).connect(g.gain); sway.start()
+  // Wheel pattern — proper "ti-DUM ti-DUM" two-tap clack at ~140 BPM, with the
+  // second tap softer & slightly later. Beats per pair = 0.42s.
+  const pairSec = 0.42
+  const clack = (when: number, accent: boolean) => {
+    const buf = makeNoiseBuffer(0.05, 'white')
+    const s = c.createBufferSource(); s.buffer = buf
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'
+    bp.frequency.value = 320; bp.Q.value = 9
+    const cg = c.createGain()
+    cg.gain.setValueAtTime(0.0001, when)
+    cg.gain.exponentialRampToValueAtTime(accent ? 0.32 : 0.18, when + 0.003)
+    cg.gain.exponentialRampToValueAtTime(0.0001, when + 0.07)
+    s.connect(bp).connect(cg).connect(masterGain!); s.start(when); s.stop(when + 0.08)
+  }
+  let pairStart = c.currentTime + 0.2
+  const ticker = window.setInterval(() => {
+    while (pairStart < c.currentTime + 1.5) {
+      clack(pairStart, true)
+      clack(pairStart + 0.13, false)
+      pairStart += pairSec
+    }
+  }, 250)
+  return { stop: () => {
+    [src, sway].forEach(n => { try { n.stop() } catch { /* stopped */ } })
+    window.clearInterval(ticker)
+  } }
 }
 
 function procCafe(): ProcHandle {
   const c = getCtx()
-  const buffer = makeNoiseBuffer(5, 'pink')
+  // Murmur bed — pink noise band-pass'd into the human voice formant range,
+  // with two LFOs modulating amplitude in opposite directions so the babble
+  // never settles into a steady hiss.
+  const buffer = makeNoiseBuffer(8, 'pink')
   const src = c.createBufferSource(); src.buffer = buffer; src.loop = true
-  const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = 0.7
-  const g = c.createGain(); g.gain.value = 0.4
-  src.connect(bp).connect(g).connect(masterGain!); src.start()
-  const t = window.setInterval(() => {
-    if (Math.random() > 0.18) return
+  const bp1 = c.createBiquadFilter(); bp1.type = 'bandpass'
+  bp1.frequency.value = 720; bp1.Q.value = 0.9
+  const g = c.createGain(); g.gain.value = 0.32
+  src.connect(bp1).connect(g).connect(masterGain!); src.start()
+  // "Syllable" amplitude shaping — fakes speech rhythm by chopping the bed
+  const chop = c.createOscillator(), chopG = c.createGain()
+  chop.frequency.value = 4.5; chopG.gain.value = 0.18
+  chop.connect(chopG).connect(g.gain); chop.start()
+  const sweep = c.createOscillator(), sweepG = c.createGain()
+  sweep.frequency.value = 0.27; sweepG.gain.value = 220
+  sweep.connect(sweepG).connect(bp1.frequency); sweep.start()
+  // Cup & saucer clinks — short bandpass pings at metallic frequencies
+  const clink = () => {
+    const t0 = c.currentTime
     const o = c.createOscillator(), og = c.createGain()
-    o.type = 'triangle'; o.frequency.value = 2400 + Math.random() * 800
-    og.gain.setValueAtTime(0.0001, c.currentTime)
-    og.gain.exponentialRampToValueAtTime(0.06, c.currentTime + 0.005)
-    og.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.25)
-    o.connect(og).connect(masterGain!); o.start(); o.stop(c.currentTime + 0.3)
-  }, 800)
-  return { stop: () => { try { src.stop() } catch {}; window.clearInterval(t) } }
+    o.type = 'triangle'; o.frequency.value = 3200 + Math.random() * 1800
+    og.gain.setValueAtTime(0.0001, t0)
+    og.gain.exponentialRampToValueAtTime(0.09, t0 + 0.003)
+    og.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35)
+    o.connect(og).connect(masterGain!); o.start(t0); o.stop(t0 + 0.4)
+  }
+  // Espresso machine hiss — rare brief bursts
+  const steam = () => {
+    const t0 = c.currentTime
+    const buf = makeNoiseBuffer(0.6, 'white')
+    const s = c.createBufferSource(); s.buffer = buf
+    const sbp = c.createBiquadFilter(); sbp.type = 'bandpass'
+    sbp.frequency.value = 4800; sbp.Q.value = 1.5
+    const sg = c.createGain()
+    sg.gain.setValueAtTime(0.0001, t0)
+    sg.gain.exponentialRampToValueAtTime(0.12, t0 + 0.1)
+    sg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.6)
+    s.connect(sbp).connect(sg).connect(masterGain!); s.start(t0); s.stop(t0 + 0.65)
+  }
+  const t = window.setInterval(() => {
+    if (Math.random() < 0.18) clink()
+    if (Math.random() < 0.04) steam()
+  }, 700)
+  return { stop: () => {
+    [src, chop, sweep].forEach(n => { try { n.stop() } catch { /* stopped */ } })
+    window.clearInterval(t)
+  } }
 }
 
 function procNight(): ProcHandle {
   const c = getCtx()
-  const buffer = makeNoiseBuffer(5, 'brown')
+  // Distant city rumble bed
+  const buffer = makeNoiseBuffer(8, 'brown')
   const src = c.createBufferSource(); src.buffer = buffer; src.loop = true
-  const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 380
-  const g = c.createGain(); g.gain.value = 0.35
+  const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 280
+  const g = c.createGain(); g.gain.value = 0.32
   src.connect(lp).connect(g).connect(masterGain!); src.start()
+  // Cricket trill — repeated short pulses ~30Hz amplitude modulation, the
+  // signature stridulation rhythm. Layered crickets at slightly different
+  // pitches and rates to fake a chorus.
+  const cricket = (freq: number, rate: number, len: number, vol: number) => {
+    const t0 = c.currentTime
+    const o = c.createOscillator()
+    o.type = 'triangle'; o.frequency.value = freq
+    const trill = c.createOscillator()
+    trill.type = 'square'; trill.frequency.value = rate
+    const trillG = c.createGain(); trillG.gain.value = 0.5
+    const og = c.createGain(); og.gain.value = 0
+    // Use the trill oscillator to gate the gain
+    trill.connect(trillG).connect(og.gain)
+    og.gain.setValueAtTime(0.0001, t0)
+    og.gain.linearRampToValueAtTime(vol, t0 + 0.05)
+    og.gain.linearRampToValueAtTime(0.0001, t0 + len)
+    o.connect(og).connect(masterGain!)
+    o.start(t0); trill.start(t0)
+    o.stop(t0 + len + 0.1); trill.stop(t0 + len + 0.1)
+  }
   const t = window.setInterval(() => {
-    if (Math.random() > 0.2) return
-    const o = c.createOscillator(), og = c.createGain()
-    o.type = 'triangle'; o.frequency.value = 4200
-    og.gain.setValueAtTime(0.0001, c.currentTime)
-    og.gain.exponentialRampToValueAtTime(0.04, c.currentTime + 0.01)
-    og.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.06)
-    o.connect(og).connect(masterGain!); o.start(); o.stop(c.currentTime + 0.07)
-  }, 600)
-  return { stop: () => { try { src.stop() } catch {}; window.clearInterval(t) } }
+    if (Math.random() < 0.55) {
+      cricket(4200 + Math.random() * 600, 28 + Math.random() * 10, 0.8 + Math.random() * 1.2, 0.04)
+    }
+    if (Math.random() < 0.35) {
+      cricket(3600, 22, 1.4, 0.025)
+    }
+  }, 1100)
+  // Distant car whoosh — very rare
+  const carInt = window.setInterval(() => {
+    if (Math.random() > 0.06) return
+    const t0 = c.currentTime
+    const buf = makeNoiseBuffer(2, 'pink')
+    const s = c.createBufferSource(); s.buffer = buf
+    const sp = c.createBiquadFilter(); sp.type = 'bandpass'
+    sp.frequency.value = 350; sp.Q.value = 1.2
+    const sg = c.createGain()
+    sg.gain.setValueAtTime(0.0001, t0)
+    sg.gain.exponentialRampToValueAtTime(0.12, t0 + 0.6)
+    sg.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.8)
+    s.connect(sp).connect(sg).connect(masterGain!); s.start(t0); s.stop(t0 + 2)
+  }, 4000)
+  return { stop: () => {
+    try { src.stop() } catch { /* stopped */ }
+    window.clearInterval(t); window.clearInterval(carInt)
+  } }
 }
 
 function procDrones(): ProcHandle {
