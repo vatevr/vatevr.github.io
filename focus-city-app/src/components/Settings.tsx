@@ -33,6 +33,9 @@ export function Settings() {
       >
         Reset progress
       </button>
+      <p className="text-[11px] text-white/40">
+        Progress saved in this browser ({state.focusHistory.length} sessions logged).
+      </p>
     </div>
   )
 }
