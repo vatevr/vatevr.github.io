@@ -13,6 +13,38 @@ const PRESETS = [
 type Mode = 'targeted' | 'open'
 type Phase = 'idle' | 'running' | 'paused' | 'completed'
 
+const SESSION_STORAGE_KEY = 'focus-city.session'
+
+type StoredSession = {
+  mode: Mode
+  phase: 'running' | 'paused'
+  duration: number
+  startMs: number
+  pauseStartMs: number | null
+  startedAtIso: string
+  constructionTileId: string | null
+  constructionBuilding: BuildingType
+}
+
+function readStoredSession(): StoredSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY)
+    if (!raw) return null
+    const s = JSON.parse(raw) as StoredSession
+    if (!s || (s.phase !== 'running' && s.phase !== 'paused')) return null
+    if (typeof s.startMs !== 'number' || typeof s.duration !== 'number') return null
+    return s
+  } catch { return null }
+}
+
+function writeStoredSession(s: StoredSession) {
+  try { localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(s)) } catch {}
+}
+
+function clearStoredSession() {
+  try { localStorage.removeItem(SESSION_STORAGE_KEY) } catch {}
+}
+
 function fmt(seconds: number) {
   const m = Math.floor(seconds / 60)
   const s = seconds % 60
@@ -58,6 +90,40 @@ export function FocusTimer() {
   const constructionBuildingRef = useRef<BuildingType>('house')
 
   useEffect(() => {
+    const s = readStoredSession()
+    if (!s) return
+    setMode(s.mode)
+    setDuration(s.duration)
+    startedAtRef.current = s.startedAtIso
+    startMsRef.current = s.startMs
+    pauseStartMsRef.current = s.pauseStartMs
+    constructionTileRef.current = s.constructionTileId
+    constructionBuildingRef.current = s.constructionBuilding
+
+    const reference = s.phase === 'paused' && s.pauseStartMs != null ? s.pauseStartMs : Date.now()
+    const elapsed = Math.max(0, Math.floor((reference - s.startMs) / 1000))
+    if (s.mode === 'targeted') {
+      const totalSec = s.duration * 60
+      const remaining = Math.max(0, totalSec - elapsed)
+      setSeconds(remaining)
+      if (s.constructionTileId) {
+        const progress = Math.max(0, Math.min(1, 1 - remaining / totalSec))
+        setConstruction({ tileId: s.constructionTileId, building: s.constructionBuilding, progress })
+      }
+    } else {
+      setSeconds(elapsed)
+      if (s.constructionTileId) {
+        const elapsedMin = elapsed / 60
+        const progress = Math.min(1, elapsedMin / 60)
+        setConstruction({ tileId: s.constructionTileId, building: s.constructionBuilding, progress })
+      }
+    }
+    setPhase(s.phase)
+  // mount-only rehydration; ignore deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
     if (phase !== 'running') return
 
     const tick = () => {
@@ -87,6 +153,7 @@ export function FocusTimer() {
           })
           setConstruction(null)
           constructionTileRef.current = null
+          clearStoredSession()
           if (state.settings.sfxOn) chime()
         }
       } else {
@@ -96,9 +163,19 @@ export function FocusTimer() {
           let b: BuildingType = 'house'
           if (elapsedMin >= 60) b = 'farm'
           if (elapsedMin >= 90 && state.level >= 8) b = 'tower'
+          const buildingChanged = constructionBuildingRef.current !== b
           constructionBuildingRef.current = b
           const progress = Math.min(1, elapsedMin / 60)
           setConstruction({ tileId: constructionTileRef.current, building: b, progress })
+          if (buildingChanged && startMsRef.current != null && startedAtRef.current != null) {
+            writeStoredSession({
+              mode: 'open', phase: 'running', duration,
+              startMs: startMsRef.current, pauseStartMs: null,
+              startedAtIso: startedAtRef.current,
+              constructionTileId: constructionTileRef.current,
+              constructionBuilding: b,
+            })
+          }
         }
       }
     }
@@ -133,23 +210,42 @@ export function FocusTimer() {
 
   function start() {
     setSeconds(mode === 'targeted' ? duration * 60 : 0)
-    startedAtRef.current = new Date().toISOString()
-    startMsRef.current = Date.now()
+    const startedAtIso = new Date().toISOString()
+    const startMs = Date.now()
+    startedAtRef.current = startedAtIso
+    startMsRef.current = startMs
     pauseStartMsRef.current = null
     const tileId = nextEmptyTileId()
+    let b: BuildingType = 'house'
     if (tileId) {
-      const b = mode === 'targeted' ? buildingForSession(duration, state.level) : 'house'
+      b = mode === 'targeted' ? buildingForSession(duration, state.level) : 'house'
       constructionTileRef.current = tileId
       constructionBuildingRef.current = b
       setConstruction({ tileId, building: b, progress: 0 })
     } else {
       constructionTileRef.current = null
     }
+    writeStoredSession({
+      mode, phase: 'running', duration,
+      startMs, pauseStartMs: null, startedAtIso,
+      constructionTileId: tileId,
+      constructionBuilding: b,
+    })
     setPhase('running')
   }
 
   function pause() {
-    pauseStartMsRef.current = Date.now()
+    const pausedAt = Date.now()
+    pauseStartMsRef.current = pausedAt
+    if (startMsRef.current != null && startedAtRef.current != null) {
+      writeStoredSession({
+        mode, phase: 'paused', duration,
+        startMs: startMsRef.current, pauseStartMs: pausedAt,
+        startedAtIso: startedAtRef.current,
+        constructionTileId: constructionTileRef.current,
+        constructionBuilding: constructionBuildingRef.current,
+      })
+    }
     setPhase('paused')
   }
   function resume() {
@@ -157,6 +253,15 @@ export function FocusTimer() {
       startMsRef.current += Date.now() - pauseStartMsRef.current
     }
     pauseStartMsRef.current = null
+    if (startMsRef.current != null && startedAtRef.current != null) {
+      writeStoredSession({
+        mode, phase: 'running', duration,
+        startMs: startMsRef.current, pauseStartMs: null,
+        startedAtIso: startedAtRef.current,
+        constructionTileId: constructionTileRef.current,
+        constructionBuilding: constructionBuildingRef.current,
+      })
+    }
     setPhase('running')
   }
 
@@ -170,6 +275,7 @@ export function FocusTimer() {
     })
     setConstruction(null); constructionTileRef.current = null
     startMsRef.current = null; pauseStartMsRef.current = null
+    clearStoredSession()
     setPhase('idle'); setSeconds(duration * 60)
   }
 
@@ -177,6 +283,8 @@ export function FocusTimer() {
     const elapsedMinutes = Math.floor(seconds / 60)
     if (elapsedMinutes < 1) {
       setConstruction(null); constructionTileRef.current = null
+      startMsRef.current = null; pauseStartMsRef.current = null
+      clearStoredSession()
       setPhase('idle'); setSeconds(0)
       return
     }
@@ -186,11 +294,14 @@ export function FocusTimer() {
       startedAt: startedAtRef.current ?? new Date().toISOString(),
     })
     setConstruction(null); constructionTileRef.current = null
+    clearStoredSession()
     if (state.settings.sfxOn) chime()
     setPhase('completed')
   }
 
   function dismiss() {
+    startMsRef.current = null; pauseStartMsRef.current = null
+    clearStoredSession()
     setPhase('idle')
     setSeconds(mode === 'targeted' ? duration * 60 : 0)
   }
