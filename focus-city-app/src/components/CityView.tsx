@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { useGame } from '../state'
-import { BUILDING_LIST, BUILDINGS } from '../buildings'
+import { BUILDING_LIST, BUILDINGS, tileEmoji } from '../buildings'
 import type { BuildingType } from '../types'
-import { Building3D } from './Building3D'
 
 export function CityView() {
   const { state, dispatch, canAfford, construction } = useGame()
