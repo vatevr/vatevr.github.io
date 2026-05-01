@@ -52,41 +52,47 @@ export function FocusTimer() {
   const [seconds, setSeconds] = useState(25 * 60)
   const startedAtRef = useRef<string | null>(null)
   const tickRef = useRef<number | null>(null)
+  const startMsRef = useRef<number | null>(null)
+  const pauseStartMsRef = useRef<number | null>(null)
   const constructionTileRef = useRef<string | null>(null)
   const constructionBuildingRef = useRef<BuildingType>('house')
 
   useEffect(() => {
     if (phase !== 'running') return
-    tickRef.current = window.setInterval(() => {
-      setSeconds(prev => {
-        if (mode === 'targeted') {
-          const next = prev - 1
-          if (constructionTileRef.current) {
-            const progress = 1 - next / (duration * 60)
-            setConstruction({
-              tileId: constructionTileRef.current,
-              building: constructionBuildingRef.current,
-              progress: Math.max(0, Math.min(1, progress)),
-            })
-          }
-          if (prev <= 1) {
-            window.clearInterval(tickRef.current!); tickRef.current = null
-            setPhase('completed')
-            dispatch({
-              type: 'completeFocus',
-              durationMinutes: duration,
-              startedAt: startedAtRef.current ?? new Date().toISOString(),
-            })
-            setConstruction(null)
-            constructionTileRef.current = null
-            if (state.settings.sfxOn) chime()
-            return 0
-          }
-          return next
-        }
-        const next = prev + 1
+
+    const tick = () => {
+      const startMs = startMsRef.current
+      if (startMs == null) return
+      const elapsedSec = Math.max(0, Math.floor((Date.now() - startMs) / 1000))
+
+      if (mode === 'targeted') {
+        const totalSec = duration * 60
+        const remaining = Math.max(0, totalSec - elapsedSec)
+        setSeconds(remaining)
         if (constructionTileRef.current) {
-          const elapsedMin = next / 60
+          const progress = Math.max(0, Math.min(1, 1 - remaining / totalSec))
+          setConstruction({
+            tileId: constructionTileRef.current,
+            building: constructionBuildingRef.current,
+            progress,
+          })
+        }
+        if (remaining <= 0) {
+          if (tickRef.current) { window.clearInterval(tickRef.current); tickRef.current = null }
+          setPhase('completed')
+          dispatch({
+            type: 'completeFocus',
+            durationMinutes: duration,
+            startedAt: startedAtRef.current ?? new Date().toISOString(),
+          })
+          setConstruction(null)
+          constructionTileRef.current = null
+          if (state.settings.sfxOn) chime()
+        }
+      } else {
+        setSeconds(elapsedSec)
+        if (constructionTileRef.current) {
+          const elapsedMin = elapsedSec / 60
           let b: BuildingType = 'house'
           if (elapsedMin >= 60) b = 'farm'
           if (elapsedMin >= 90 && state.level >= 8) b = 'tower'
@@ -94,11 +100,17 @@ export function FocusTimer() {
           const progress = Math.min(1, elapsedMin / 60)
           setConstruction({ tileId: constructionTileRef.current, building: b, progress })
         }
-        return next
-      })
-    }, 1000)
+      }
+    }
+
+    tick()
+    tickRef.current = window.setInterval(tick, 1000)
+    const onVisibility = () => { if (!document.hidden) tick() }
+    document.addEventListener('visibilitychange', onVisibility)
+
     return () => {
       if (tickRef.current) { window.clearInterval(tickRef.current); tickRef.current = null }
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [phase, mode, duration, dispatch, state.settings.sfxOn, state.level, setConstruction])
 
@@ -122,6 +134,8 @@ export function FocusTimer() {
   function start() {
     setSeconds(mode === 'targeted' ? duration * 60 : 0)
     startedAtRef.current = new Date().toISOString()
+    startMsRef.current = Date.now()
+    pauseStartMsRef.current = null
     const tileId = nextEmptyTileId()
     if (tileId) {
       const b = mode === 'targeted' ? buildingForSession(duration, state.level) : 'house'
@@ -134,8 +148,17 @@ export function FocusTimer() {
     setPhase('running')
   }
 
-  function pause() { setPhase('paused') }
-  function resume() { setPhase('running') }
+  function pause() {
+    pauseStartMsRef.current = Date.now()
+    setPhase('paused')
+  }
+  function resume() {
+    if (pauseStartMsRef.current != null && startMsRef.current != null) {
+      startMsRef.current += Date.now() - pauseStartMsRef.current
+    }
+    pauseStartMsRef.current = null
+    setPhase('running')
+  }
 
   function handleAbandon() {
     const elapsedMinutes = Math.round((duration * 60 - seconds) / 60)
@@ -146,6 +169,7 @@ export function FocusTimer() {
       elapsedMinutes,
     })
     setConstruction(null); constructionTileRef.current = null
+    startMsRef.current = null; pauseStartMsRef.current = null
     setPhase('idle'); setSeconds(duration * 60)
   }
 
