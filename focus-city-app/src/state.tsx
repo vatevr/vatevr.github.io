@@ -5,7 +5,7 @@ import type {
 } from './types'
 import { BUILDINGS } from './buildings'
 import {
-  EMPTY_MATERIALS, addMaterials, canAfford, focusReward, habitReward, levelFromXp, spend, taskReward,
+  EMPTY_MATERIALS, addMaterials, buildingCost, canAfford, focusReward, habitReward, levelFromXp, spend, taskReward,
 } from './rewards'
 
 const STORAGE_KEY = 'focus-kingdom:state:v1'
@@ -95,11 +95,29 @@ type Action =
   | { type: 'reset' }
   | { type: 'rolloverIfNeeded' }
 
+function countOfType(city: UserState['city'], type: BuildingType): number {
+  let n = 0
+  for (const t of city) if (t.type === type) n++
+  return n
+}
+
+function completedSessionCount(state: UserState): number {
+  let n = 0
+  for (const s of state.focusHistory) if (s.status === 'completed') n++
+  return n
+}
+
 function autoPlace(state: UserState, building: BuildingType): UserState {
   const empty = state.city.find(t => t.type === 'empty')
   if (!empty) return state
+  const def = BUILDINGS[building]
+  if (state.level < def.unlockLevel) return state
+  if (completedSessionCount(state) < def.unlockSessions) return state
+  const cost = buildingCost(def, countOfType(state.city, building))
+  if (!canAfford(state.materials, cost)) return state
   return {
     ...state,
+    materials: spend(state.materials, cost),
     city: state.city.map(t =>
       t.id === empty.id ? { ...t, type: building, level: 1, placedAt: new Date().toISOString() } : t,
     ),
@@ -161,10 +179,12 @@ function reducer(state: UserState, action: Action): UserState {
       if (!tile || tile.type !== 'empty') return state
       const def = BUILDINGS[action.building]
       if (state.level < def.unlockLevel) return state
-      if (!canAfford(state.materials, def.cost)) return state
+      if (completedSessionCount(state) < def.unlockSessions) return state
+      const cost = buildingCost(def, countOfType(state.city, action.building))
+      if (!canAfford(state.materials, cost)) return state
       return {
         ...state,
-        materials: spend(state.materials, def.cost),
+        materials: spend(state.materials, cost),
         city: state.city.map(t =>
           t.id === action.tileId
             ? { ...t, type: action.building, level: 1, placedAt: new Date().toISOString() }

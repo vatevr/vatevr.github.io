@@ -5,6 +5,9 @@ import path from 'node:path'
 export default defineConfig({
   plugins: [react()],
   base: '/focus-city/',
+  resolve: {
+    dedupe: ['three', 'react', 'react-dom'],
+  },
   build: {
     outDir: path.resolve(__dirname, '../focus-city'),
     emptyOutDir: true,

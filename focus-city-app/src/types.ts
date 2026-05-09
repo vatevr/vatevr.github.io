@@ -113,8 +113,10 @@ export interface BuildingDef {
   type: BuildingType
   name: string
   cost: Partial<Materials>
+  costMultiplier: number
   emoji: string
   premium: boolean
   unlockLevel: number
+  unlockSessions: number
   description: string
 }

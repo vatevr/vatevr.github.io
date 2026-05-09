@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Source asset packs (extracted contents are committed under public/models/)
+Medieval Village Pack*/
+Ultimate Platformer Pack*/
+Ultimate Modular Buildings*/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

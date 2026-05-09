@@ -1,13 +1,31 @@
-import { useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
+import { Canvas, useThree } from '@react-three/fiber'
+import { OrthographicCamera } from '@react-three/drei'
 import { useGame } from '../state'
-import { BUILDING_LIST, BUILDINGS, tileEmoji } from '../buildings'
-import type { BuildingType } from '../types'
+import { BUILDING_LIST, BUILDINGS } from '../buildings'
+import { buildingCost } from '../rewards'
+import type { BuildingDef, BuildingType, CityTile, Materials } from '../types'
+import { BuildingMesh } from './BuildingMesh'
+
+const TILE = 1
+const GAP = 0.05
 
 export function CityView() {
-  const { state, dispatch, canAfford, construction } = useGame()
+  const { state, dispatch, canAfford, construction, totals } = useGame()
   const [selectedTile, setSelectedTile] = useState<string | null>(null)
   const [picker, setPicker] = useState<BuildingType>('house')
-  const cellsPerRow = state.gridSize
+  const grid = state.gridSize
+  const span = grid * (TILE + GAP)
+  const sessionsDone = totals.completedSessions
+
+  function countOf(type: BuildingType): number {
+    let n = 0
+    for (const t of state.city) if (t.type === type) n++
+    return n
+  }
+  function nextCost(b: BuildingDef): Partial<Materials> {
+    return buildingCost(b, countOf(b.type))
+  }
 
   return (
     <div className="panel p-5 flex flex-col gap-4 h-full">
@@ -18,60 +36,36 @@ export function CityView() {
         </div>
       </div>
 
-      <div className="relative grow grid place-items-center overflow-auto py-4">
-        <div
-          className="iso-stage"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(${cellsPerRow}, 56px)`,
-            gridTemplateRows: `repeat(${cellsPerRow}, 56px)`,
-            gap: 2,
-            transform: 'rotateX(55deg) rotateZ(-45deg) scale(0.95)',
-            transformStyle: 'preserve-3d',
-            perspective: '1200px',
-          }}
-        >
-          {state.city.map(tile => {
-            const def = tile.type !== 'empty' ? BUILDINGS[tile.type] : null
-            const selected = selectedTile === tile.id
-            const empty = tile.type === 'empty'
-            const isConstruction = construction && construction.tileId === tile.id && empty
-            return (
-              <button
-                key={tile.id}
-                onClick={() => setSelectedTile(tile.id)}
-                className={[
-                  'relative w-14 h-14 rounded-sm grid place-items-center transition-all overflow-hidden',
-                  empty && !isConstruction
-                    ? 'bg-emerald-900/30 border border-emerald-500/10 hover:bg-emerald-700/40'
-                    : isConstruction
-                      ? 'bg-amber-900/40 border border-amber-400/30 shadow-md shadow-black/40 ring-1 ring-amber-300/30 animate-pulse-soft'
-                      : 'bg-amber-200/20 border border-amber-300/30 shadow-md shadow-black/40',
-                  selected ? 'ring-2 ring-gold ring-offset-1 ring-offset-transparent' : '',
-                ].join(' ')}
-                title={
-                  isConstruction
-                    ? `Building ${BUILDINGS[construction.building].name} — ${Math.round(construction.progress * 100)}%`
-                    : def ? def.name : 'Empty land'
-                }
-              >
-                {isConstruction ? (
-                  <ConstructionTile
-                    building={construction.building}
-                    progress={construction.progress}
-                  />
-                ) : (
-                  <span
-                    className="text-xl"
-                    style={{ transform: 'rotateZ(45deg) rotateX(-55deg)', display: 'block' }}
-                  >
-                    {tileEmoji(tile.type) || (empty ? '·' : '')}
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
+      <div className="relative grow min-h-[320px] rounded-md overflow-hidden bg-gradient-to-b from-[#9fc4e8] to-[#cfe1f3]">
+        <Canvas dpr={[1, 2]} shadows>
+          <OrthographicCamera
+            makeDefault
+            position={[span * 1.1, span * 0.85, span * 1.1]}
+            zoom={Math.min(36, 260 / grid)}
+            near={-100}
+            far={200}
+          />
+          <CameraRig />
+          <ambientLight intensity={0.55} />
+          <directionalLight
+            position={[span, span * 1.6, span * 0.6]}
+            intensity={1.1}
+            castShadow
+            shadow-mapSize-width={1024}
+            shadow-mapSize-height={1024}
+          />
+          <Suspense fallback={null}>
+            <CityScene
+              tiles={state.city}
+              grid={grid}
+              selectedTile={selectedTile}
+              constructionTileId={construction?.tileId ?? null}
+              constructionBuilding={construction?.building ?? null}
+              constructionProgress={construction?.progress ?? 0}
+              onPick={id => setSelectedTile(id)}
+            />
+          </Suspense>
+        </Canvas>
       </div>
 
       <div className="border-t border-white/10 pt-3">
@@ -85,9 +79,17 @@ export function CityView() {
         </div>
         <div className="flex flex-wrap gap-1.5 max-h-40 overflow-auto scroll-thin pr-1">
           {BUILDING_LIST.map(b => {
-            const locked = state.level < b.unlockLevel
-            const afford = canAfford(b.cost)
+            const levelLocked = state.level < b.unlockLevel
+            const sessionLocked = sessionsDone < b.unlockSessions
+            const locked = levelLocked || sessionLocked
+            const cost = nextCost(b)
+            const afford = canAfford(cost)
             const active = picker === b.type
+            const lockTip = sessionLocked
+              ? `(${b.unlockSessions - sessionsDone} more sessions)`
+              : levelLocked
+                ? `(unlocks at lvl ${b.unlockLevel})`
+                : ''
             return (
               <button
                 key={b.type}
@@ -99,7 +101,7 @@ export function CityView() {
                   locked ? '!opacity-40 !cursor-not-allowed' : '',
                   !afford && !locked ? 'ring-1 ring-brick/40' : '',
                 ].join(' ')}
-                title={`${b.name} — ${costLabel(b)} ${locked ? `(unlocks at lvl ${b.unlockLevel})` : ''}`}
+                title={`${b.name} — ${costLabel({ cost })} ${lockTip}`}
               >
                 <span>{b.emoji}</span>
                 <span>{b.name}</span>
@@ -126,19 +128,26 @@ export function CityView() {
     const tile = state.city.find(t => t.id === tileId)
     const def = BUILDINGS[building]
     const occupied = tile && tile.type !== 'empty'
-    const locked = state.level < def.unlockLevel
-    const affordable = canAfford(def.cost)
-    const disabled = !!occupied || locked || !affordable
+    const levelLocked = state.level < def.unlockLevel
+    const sessionLocked = sessionsDone < def.unlockSessions
+    const owned = countOf(building)
+    const cost = nextCost(def)
+    const affordable = canAfford(cost)
+    const disabled = !!occupied || levelLocked || sessionLocked || !affordable
     let reason = ''
     if (occupied) reason = 'Tile is occupied'
-    else if (locked) reason = `Unlocks at level ${def.unlockLevel}`
+    else if (levelLocked) reason = `Unlocks at level ${def.unlockLevel}`
+    else if (sessionLocked) reason = `${def.unlockSessions - sessionsDone} more sessions`
     else if (!affordable) reason = 'Not enough materials'
 
     return (
       <div className="mt-2 flex items-center justify-between gap-2 bg-white/5 rounded p-2">
         <div className="text-xs">
-          <div className="font-semibold">{def.emoji} {def.name}</div>
-          <div className="text-white/50">{costLabel(def)}</div>
+          <div className="font-semibold">
+            {def.emoji} {def.name}
+            {owned > 0 && <span className="ml-2 text-white/40">×{owned}</span>}
+          </div>
+          <div className="text-white/50">{costLabel({ cost })}</div>
         </div>
         <button
           disabled={disabled}
@@ -152,43 +161,85 @@ export function CityView() {
   }
 }
 
-function costLabel(b: { cost: Partial<Record<string, number>> }) {
-  return Object.entries(b.cost).map(([k, v]) => `${v} ${k}`).join(' · ')
+function CameraRig() {
+  const { camera } = useThree()
+  useEffect(() => {
+    camera.lookAt(0, 0, 0)
+    camera.updateProjectionMatrix()
+  }, [camera])
+  return null
 }
 
-function ConstructionTile({
-  building, progress,
-}: { building: BuildingType; progress: number }) {
-  const def = BUILDINGS[building]
-  const pct = Math.max(0, Math.min(1, progress))
-  const clipPct = (1 - pct) * 100
+interface SceneProps {
+  tiles: CityTile[]
+  grid: number
+  selectedTile: string | null
+  constructionTileId: string | null
+  constructionBuilding: BuildingType | null
+  constructionProgress: number
+  onPick: (id: string) => void
+}
+
+function CityScene({
+  tiles, grid, selectedTile, constructionTileId, constructionBuilding, constructionProgress, onPick,
+}: SceneProps) {
+  const half = (grid - 1) / 2
+  const baseSize = grid * (TILE + GAP)
+
   return (
-    <div
-      className="relative w-full h-full grid place-items-center"
-      style={{ transform: 'rotateZ(45deg) rotateX(-55deg)' }}
-    >
-      <span className="absolute inset-0 grid place-items-center text-base opacity-60" aria-hidden>🚧</span>
-      <span
-        className="relative text-xl"
-        style={{
-          clipPath: `inset(${clipPct}% 0 0 0)`,
-          WebkitClipPath: `inset(${clipPct}% 0 0 0)`,
-          filter: pct < 1 ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' : undefined,
-          transition: 'clip-path 0.6s ease-out',
-        }}
-        title={def.name}
-      >
-        {def.emoji}
-      </span>
-      {pct < 1 && pct > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 text-[10px] animate-bounce" aria-hidden>🔨</span>
-      )}
-      <span className="absolute left-0 right-0 bottom-0 h-1 bg-black/30" aria-hidden>
-        <span
-          className="block h-full bg-amber-400 transition-[width] duration-700 ease-linear"
-          style={{ width: `${pct * 100}%` }}
-        />
-      </span>
-    </div>
+    <group>
+      <mesh position={[0, -0.06, 0]} receiveShadow>
+        <boxGeometry args={[baseSize + 0.4, 0.12, baseSize + 0.4]} />
+        <meshStandardMaterial color="#5C4533" />
+      </mesh>
+      <mesh position={[0, 0.001, 0]} receiveShadow>
+        <boxGeometry args={[baseSize, 0.02, baseSize]} />
+        <meshStandardMaterial color="#7CB76A" />
+      </mesh>
+
+      {tiles.map(tile => {
+        const px = (tile.x - half) * (TILE + GAP)
+        const pz = (tile.y - half) * (TILE + GAP)
+        const isConstruction = constructionTileId === tile.id && tile.type === 'empty'
+        const selected = selectedTile === tile.id
+        const empty = tile.type === 'empty' && !isConstruction
+
+        return (
+          <group key={tile.id} position={[px, 0, pz]}>
+            <mesh
+              position={[0, 0.011, 0]}
+              onClick={e => { e.stopPropagation(); onPick(tile.id) }}
+              onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer' }}
+              onPointerOut={() => { document.body.style.cursor = '' }}
+              receiveShadow
+            >
+              <boxGeometry args={[TILE * 0.96, 0.02, TILE * 0.96]} />
+              <meshStandardMaterial
+                color={selected ? '#ffe28a' : empty ? '#8FCB78' : '#7CB76A'}
+                transparent={empty}
+                opacity={empty ? 0.65 : 1}
+              />
+            </mesh>
+
+            {tile.type !== 'empty' && (
+              <BuildingMesh type={tile.type} selected={selected} seed={tile.id} />
+            )}
+
+            {isConstruction && constructionBuilding && (
+              <BuildingMesh
+                type={constructionBuilding}
+                selected={selected}
+                progress={constructionProgress}
+                seed={tile.id}
+              />
+            )}
+          </group>
+        )
+      })}
+    </group>
   )
+}
+
+function costLabel(b: { cost: Partial<Record<string, number>> }) {
+  return Object.entries(b.cost).map(([k, v]) => `${v} ${k}`).join(' · ')
 }

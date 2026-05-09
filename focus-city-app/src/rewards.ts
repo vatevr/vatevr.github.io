@@ -1,4 +1,4 @@
-import type { Materials, Priority } from './types'
+import type { BuildingDef, Materials, Priority } from './types'
 
 export const EMPTY_MATERIALS: Materials = {
   wood: 0, stone: 0, gold: 0, food: 0, knowledge: 0, crystal: 0,
@@ -23,6 +23,16 @@ export function spend(have: Materials, cost: Partial<Materials>): Materials {
   const out: Materials = { ...have }
   for (const k of Object.keys(cost) as (keyof Materials)[]) {
     out[k] = (out[k] ?? 0) - (cost[k] ?? 0)
+  }
+  return out
+}
+
+export function buildingCost(def: BuildingDef, count: number): Partial<Materials> {
+  const factor = Math.pow(def.costMultiplier, Math.max(0, count))
+  const out: Partial<Materials> = {}
+  for (const k of Object.keys(def.cost) as (keyof Materials)[]) {
+    const base = def.cost[k] ?? 0
+    if (base > 0) out[k] = Math.ceil(base * factor)
   }
   return out
 }
