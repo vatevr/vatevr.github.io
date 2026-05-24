@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="75%">
+      <stop offset="0%" stop-color="#3a2716"/>
+      <stop offset="100%" stop-color="#160c05"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <g transform="translate(128 96)" fill="#e8d8b0">
+    <!-- A simple eye-and-finger glyph: the proverb "to look through one's fingers". -->
+    <path d="M0 160 C 56 80, 200 80, 256 160 C 200 240, 56 240, 0 160 Z" fill="none" stroke="#e8d8b0" stroke-width="14" stroke-linejoin="round"/>
+    <circle cx="128" cy="160" r="44" fill="#b07a2a"/>
+    <circle cx="128" cy="160" r="18" fill="#160c05"/>
+    <!-- Fingers in front -->
+    <g stroke="#e8d8b0" stroke-width="20" stroke-linecap="round" fill="none">
+      <line x1="58" y1="240" x2="86" y2="100"/>
+      <line x1="110" y1="260" x2="128" y2="92"/>
+      <line x1="162" y1="260" x2="170" y2="92"/>
+      <line x1="206" y1="240" x2="208" y2="108"/>
+    </g>
+  </g>
+</svg>
