@@ -60,17 +60,12 @@ body {
   will-change: background-size, background-position, transform;
 }
 
-/* Overview state: gentle ken-burns float */
+/* Overview state: painting at full brightness so it reads clearly. */
 body[data-state="overview"] .canvas {
-  filter: brightness(0.72) contrast(1.04) saturate(0.95);
-  animation: kenburns 28s var(--ease-emph) infinite alternate;
+  filter: brightness(1.0) contrast(1.04) saturate(1.0);
 }
 body[data-state="focus"] .canvas {
   filter: brightness(1.0) contrast(1.05) saturate(1.05);
-}
-@keyframes kenburns {
-  from { transform: scale(1.0) translate3d(0, 0, 0); }
-  to   { transform: scale(1.03) translate3d(-0.6%, 0.4%, 0); }
 }
 
 .vignette {
@@ -78,36 +73,99 @@ body[data-state="focus"] .canvas {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(140% 80% at 50% 110%, rgba(10,6,3,0.55) 0%, rgba(10,6,3,0.0) 55%),
-    radial-gradient(110% 70% at 50% 0%, rgba(10,6,3,0.45) 0%, rgba(10,6,3,0.0) 60%);
+    radial-gradient(140% 80% at 50% 110%, rgba(10,6,3,0.45) 0%, rgba(10,6,3,0.0) 55%),
+    radial-gradient(110% 70% at 50% 0%, rgba(10,6,3,0.35) 0%, rgba(10,6,3,0.0) 60%);
   transition: opacity 600ms var(--ease-emph);
+  opacity: 1;
 }
-body[data-state="overview"] .vignette { opacity: 0.4; }
+/* Reduce the vignette in overview so the painting reads edge-to-edge. */
+body[data-state="overview"] .vignette { opacity: 0.15; }
 
-/* Reticle: subtle spotlight ring on the proverb region (focus state only) */
+/* Reticle: a soft pulsing outline marks today's proverb in overview.
+   No darkening of the rest of the painting — just a quiet wayfinder. */
 .reticle {
   position: absolute;
-  border: 1px solid rgba(244, 231, 200, 0.0);
-  border-radius: 999px;
+  border: 1.5px solid rgba(225, 166, 76, 0.0);
+  border-radius: 4px;
   pointer-events: none;
-  box-shadow: 0 0 0 9999px rgba(10,6,3,0.0);
   transition:
     left var(--pan-dur) var(--ease-cinema),
     top var(--pan-dur) var(--ease-cinema),
     width var(--pan-dur) var(--ease-cinema),
     height var(--pan-dur) var(--ease-cinema),
     border-color 500ms var(--ease-emph),
-    box-shadow 600ms var(--ease-emph),
     opacity 500ms var(--ease-emph);
   opacity: 0;
+  mix-blend-mode: screen;
 }
 body[data-state="overview"] .reticle {
   opacity: 1;
-  border-color: rgba(244, 231, 200, 0.55);
-  box-shadow:
-    0 0 0 1px rgba(244, 231, 200, 0.18),
-    0 0 0 9999px rgba(10,6,3,0.42);
+  border-color: rgba(225, 166, 76, 0.85);
+  animation: reticle-pulse 2.6s var(--ease-emph) infinite;
 }
+@keyframes reticle-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(225, 166, 76, 0.45); }
+  50%      { box-shadow: 0 0 0 6px rgba(225, 166, 76, 0.0); }
+}
+
+/* --- explore: hover ring + tooltip ---------------------------------- */
+.hover-ring {
+  position: absolute;
+  border: 1.5px solid rgba(225, 166, 76, 0.9);
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.35),
+    0 0 24px -4px rgba(225, 166, 76, 0.45);
+  transition:
+    left 220ms var(--ease-emph),
+    top  220ms var(--ease-emph),
+    width 220ms var(--ease-emph),
+    height 220ms var(--ease-emph),
+    opacity 180ms var(--ease-emph);
+  mix-blend-mode: screen;
+}
+.hover-ring.visible { opacity: 1; }
+
+.tooltip {
+  position: fixed;
+  pointer-events: none;
+  z-index: 6;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.25;
+  color: var(--ink);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  border: 1px solid var(--glass-edge);
+  border-radius: 12px;
+  padding: 10px 14px;
+  max-width: 260px;
+  opacity: 0;
+  transform: translate(-50%, calc(-100% - 18px));
+  transition: opacity 160ms var(--ease-emph), transform 200ms var(--ease-emph);
+  box-shadow: 0 12px 32px -12px rgba(0,0,0,0.6);
+  text-wrap: balance;
+}
+.tooltip.visible { opacity: 1; transform: translate(-50%, calc(-100% - 26px)); }
+.tooltip .tt-num {
+  display: block;
+  font-family: var(--sans);
+  font-style: normal;
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ochre);
+  margin-bottom: 3px;
+}
+
+/* Cursor hints */
+.canvas { cursor: zoom-in; }
+.canvas.exploring { cursor: pointer; }
+body[data-state="overview"] .canvas { cursor: crosshair; }
 
 /* --- topbar (floating glass pill) ----------------------------------- */
 .topbar {

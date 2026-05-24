@@ -5,7 +5,6 @@
   const IMAGE_H = 4000;
 
   // How much context around the proverb rect we show in focus mode.
-  // Higher = wider context, lower = tighter zoom.
   const FOCUS_PAD = 0.7;
 
   const $ = (id) => document.getElementById(id);
@@ -13,6 +12,8 @@
     body: document.body,
     canvas: $('canvas'),
     reticle: $('reticle'),
+    hoverRing: $('hoverRing'),
+    tooltip: $('tooltip'),
     date: $('date'),
     counter: $('counter'),
     card: $('card'),
@@ -33,11 +34,12 @@
   };
 
   let PROVERBS = [];
-  let offset = 0;        // days from today; 0 = today
+  let offset = 0;            // days from today; 0 = today
+  let selectedId = null;     // overrides the day's pick while exploring
   let quizActive = false;
   let userInteracted = false;
 
-  // FNV-1a hash
+  // FNV-1a
   function hash(s) {
     let h = 2166136261 >>> 0;
     for (let i = 0; i < s.length; i++) {
@@ -59,56 +61,93 @@
       String(d.getDate()).padStart(2, '0');
   }
 
-  function pickProverb(off) {
+  function pickProverbForDate(off) {
     const d = dateForOffset(off);
     const idx = hash(dateKey(d)) % PROVERBS.length;
-    return { proverb: PROVERBS[idx], date: d, idx };
+    return { proverb: PROVERBS[idx], date: d };
   }
 
-  // ----- canvas math ---------------------------------------------------
-  // "Contain" the painting into the viewport (overview state).
+  // The currently displayed proverb. If exploring, that overrides the day's.
+  function currentProverb() {
+    if (selectedId != null) {
+      const p = PROVERBS.find(x => x.id === selectedId);
+      if (p) return { proverb: p, date: dateForOffset(offset), exploring: true };
+    }
+    const { proverb, date } = pickProverbForDate(offset);
+    return { proverb, date, exploring: false };
+  }
+
+  // ----- canvas math --------------------------------------------------
   function fitContain(vw, vh) {
     const imgRatio = IMAGE_W / IMAGE_H;
     const vRatio = vw / vh;
     let sx, sy;
-    if (vRatio > imgRatio) {
-      // Viewport wider than image — fit height.
-      sy = 100;
-      sx = (imgRatio / vRatio) * 100;
-    } else {
-      sx = 100;
-      sy = (vRatio / imgRatio) * 100;
-    }
+    if (vRatio > imgRatio) { sy = 100; sx = (imgRatio / vRatio) * 100; }
+    else                   { sx = 100; sy = (vRatio / imgRatio) * 100; }
     return { size: `${sx}% ${sy}%`, position: '50% 50%' };
   }
 
-  // "Cover" a target rectangle with the viewport (focus state).
-  function fitFocus(crop, vw, vh, pad = FOCUS_PAD) {
+  // The current focus view (image-pixel coordinates of the rectangle to display).
+  // Updated when proverb changes, when user wheel-zooms, or when user pans.
+  let focusView = null; // { cx, cy, halfW, halfH }
+  const ZOOM_MIN = 0.4;   // wider context (zoomed out)
+  const ZOOM_MAX = 5.0;   // tighter detail (zoomed in)
+
+  function defaultFocusFor(crop, vw, vh, pad = FOCUS_PAD) {
     const [x, y, w, h] = crop;
-    const cx = x + w / 2;
-    const cy = y + h / 2;
     let cw = w * (1 + pad);
     let ch = h * (1 + pad);
     const vRatio = vw / vh;
     const cRatio = cw / ch;
     if (cRatio < vRatio) cw = ch * vRatio;
-    else ch = cw / vRatio;
+    else                 ch = cw / vRatio;
     cw = Math.min(cw, IMAGE_W);
     ch = Math.min(ch, IMAGE_H);
-    let left = cx - cw / 2;
-    let top = cy - ch / 2;
+    return { cx: x + w / 2, cy: y + h / 2, halfW: cw / 2, halfH: ch / 2, basePad: pad };
+  }
+
+  // Turn a focusView into background-size + background-position percentages.
+  function fitFromView(view, vw, vh) {
+    let cw = view.halfW * 2;
+    let ch = view.halfH * 2;
+    const vRatio = vw / vh;
+    const cRatio = cw / ch;
+    if (cRatio < vRatio) cw = ch * vRatio;
+    else                 ch = cw / vRatio;
+    cw = Math.min(cw, IMAGE_W);
+    ch = Math.min(ch, IMAGE_H);
+    let left = view.cx - cw / 2;
+    let top  = view.cy - ch / 2;
     left = Math.max(0, Math.min(IMAGE_W - cw, left));
     top  = Math.max(0, Math.min(IMAGE_H - ch, top));
     const sizeX = (IMAGE_W / cw) * 100;
     const sizeY = (IMAGE_H / ch) * 100;
     const posX = (IMAGE_W - cw) > 0 ? (left / (IMAGE_W - cw)) * 100 : 50;
     const posY = (IMAGE_H - ch) > 0 ? (top  / (IMAGE_H - ch)) * 100 : 50;
-    return { size: `${sizeX}% ${sizeY}%`, position: `${posX}% ${posY}%`, left, top, cw, ch };
+    return { size: `${sizeX}% ${sizeY}%`, position: `${posX}% ${posY}%`, cw, ch, left, top };
   }
 
-  // Position the reticle ring around the proverb subject when in overview.
-  // In overview the painting is letterboxed; compute the painting's screen rect
-  // then place the ring on the actual crop area.
+  // Zoom by `factor` (>1 zooms in, <1 zooms out), keeping the image point
+  // under (clientX, clientY) anchored at the same screen position.
+  function zoomAt(factor, clientX, clientY) {
+    if (!focusView) return;
+    const { proverb } = currentProverb();
+    // Compute zoom limits from the proverb's default view dimensions.
+    const base = defaultFocusFor(proverb.crop, window.innerWidth, window.innerHeight);
+    const cur  = focusView.halfW / base.halfW; // 1 = default, <1 = zoomed in
+    let next = cur / factor;
+    next = Math.max(1 / ZOOM_MAX, Math.min(1 / ZOOM_MIN, next));
+    const applied = cur / next; // actual factor after clamping
+    if (Math.abs(applied - 1) < 0.001) return;
+    const { ix, iy } = screenToImage(clientX, clientY);
+    focusView.halfW = base.halfW * next;
+    focusView.halfH = base.halfH * next;
+    // Shift center so the cursor's image point stays under the cursor.
+    focusView.cx = ix + (focusView.cx - ix) / applied;
+    focusView.cy = iy + (focusView.cy - iy) / applied;
+    paintCanvas('focus', proverb.crop, { resetView: false, animated: false });
+  }
+
   function placeReticle(crop) {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -116,53 +155,167 @@
     const vRatio = vw / vh;
     let drawW, drawH, originX, originY;
     if (vRatio > imgRatio) {
-      drawH = vh;
-      drawW = vh * imgRatio;
-      originX = (vw - drawW) / 2;
-      originY = 0;
+      drawH = vh; drawW = vh * imgRatio;
+      originX = (vw - drawW) / 2; originY = 0;
     } else {
-      drawW = vw;
-      drawH = vw / imgRatio;
-      originX = 0;
-      originY = (vh - drawH) / 2;
+      drawW = vw; drawH = vw / imgRatio;
+      originX = 0; originY = (vh - drawH) / 2;
     }
     const [x, y, w, h] = crop;
-    const cx = (x + w / 2) / IMAGE_W * drawW + originX;
-    const cy = (y + h / 2) / IMAGE_H * drawH + originY;
-    // Reticle diameter proportional to the larger of w/h on screen.
-    const wOnScreen = (w / IMAGE_W) * drawW;
-    const hOnScreen = (h / IMAGE_H) * drawH;
-    const d = Math.max(wOnScreen, hOnScreen) * 1.4;
+    // Tight rectangle around the proverb subject, with a small breathing margin.
+    const PAD = 6;
+    const left   = originX + (x / IMAGE_W) * drawW - PAD;
+    const top    = originY + (y / IMAGE_H) * drawH - PAD;
+    const width  = (w / IMAGE_W) * drawW + PAD * 2;
+    const height = (h / IMAGE_H) * drawH + PAD * 2;
     const r = els.reticle;
-    r.style.left = (cx - d / 2) + 'px';
-    r.style.top  = (cy - d / 2) + 'px';
-    r.style.width = d + 'px';
-    r.style.height = d + 'px';
+    r.style.left = left + 'px';
+    r.style.top  = top + 'px';
+    r.style.width = width + 'px';
+    r.style.height = height + 'px';
   }
 
-  function paintCanvas(state, crop) {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const target = (state === 'overview') ? fitContain(vw, vh) : fitFocus(crop, vw, vh);
+  function paintCanvas(state, crop, { resetView = true, animated = true } = {}) {
+    const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 720;
+    if (state === 'overview') {
+      const target = fitContain(vw, vh);
+      els.canvas.style.backgroundSize = target.size;
+      els.canvas.style.backgroundPosition = target.position;
+      placeReticle(crop);
+      return;
+    }
+    // focus state — uses focusView.
+    if (resetView || !focusView) {
+      focusView = defaultFocusFor(crop, vw, vh);
+    }
+    if (!animated) {
+      // Temporarily disable transition (used for live wheel/pan).
+      els.canvas.style.transition = 'none';
+    }
+    const target = fitFromView(focusView, vw, vh);
     els.canvas.style.backgroundSize = target.size;
     els.canvas.style.backgroundPosition = target.position;
-    if (state === 'overview') placeReticle(crop);
+    if (!animated) {
+      // Force a reflow so the inline override sticks, then clear it.
+      void els.canvas.offsetHeight;
+      els.canvas.style.transition = '';
+    }
   }
 
-  // ----- view state ---------------------------------------------------
+  // ----- screen ↔ image coordinate transforms ------------------------
+  // Reads the *currently rendered* background-size/position to invert.
+  function canvasView() {
+    const c = els.canvas;
+    const rect = c.getBoundingClientRect();
+    const cs = getComputedStyle(c);
+    const bs = cs.backgroundSize.split(' ');
+    const bp = cs.backgroundPosition.split(' ');
+    const bsx = parseFloat(bs[0]) / 100;
+    const bsy = parseFloat(bs[1] || bs[0]) / 100;
+    const bpx = parseFloat(bp[0]) / 100;
+    const bpy = parseFloat(bp[1] || bp[0]) / 100;
+    const CW = rect.width, CH = rect.height;
+    const rW = CW * bsx, rH = CH * bsy;
+    const ox = (CW - rW) * bpx;
+    const oy = (CH - rH) * bpy;
+    return { rect, CW, CH, rW, rH, ox, oy };
+  }
+
+  function screenToImage(clientX, clientY) {
+    const v = canvasView();
+    const lx = clientX - v.rect.left - v.ox;
+    const ly = clientY - v.rect.top  - v.oy;
+    return {
+      ix: (lx / v.rW) * IMAGE_W,
+      iy: (ly / v.rH) * IMAGE_H,
+    };
+  }
+
+  function imageRectToScreen([x, y, w, h]) {
+    const v = canvasView();
+    return {
+      left:   v.rect.left + v.ox + (x / IMAGE_W) * v.rW,
+      top:    v.rect.top  + v.oy + (y / IMAGE_H) * v.rH,
+      width:  (w / IMAGE_W) * v.rW,
+      height: (h / IMAGE_H) * v.rH,
+    };
+  }
+
+  // ----- hit test (smallest containing rectangle wins) ---------------
+  function hitTest(ix, iy) {
+    if (ix < 0 || iy < 0 || ix >= IMAGE_W || iy >= IMAGE_H) return null;
+    let best = null, bestArea = Infinity;
+    for (const p of PROVERBS) {
+      const [x, y, w, h] = p.crop;
+      if (ix >= x && ix <= x + w && iy >= y && iy <= y + h) {
+        const a = w * h;
+        if (a < bestArea) { best = p; bestArea = a; }
+      }
+    }
+    return best;
+  }
+
+  // ----- hover ring + tooltip ----------------------------------------
+  let hoveredId = null;
+
+  function showHover(p, clientX, clientY) {
+    if (hoveredId === p.id) {
+      // Just reposition tooltip.
+      positionTooltip(clientX, clientY);
+      return;
+    }
+    hoveredId = p.id;
+    // Position ring on the proverb's image rect.
+    const r = imageRectToScreen(p.crop);
+    const ring = els.hoverRing;
+    ring.style.left   = r.left + 'px';
+    ring.style.top    = r.top  + 'px';
+    ring.style.width  = r.width  + 'px';
+    ring.style.height = r.height + 'px';
+    ring.classList.add('visible');
+    // Tooltip content.
+    els.tooltip.innerHTML = `<span class="tt-num">№ ${p.id}</span>${escapeHtml(p.en)}`;
+    els.tooltip.classList.add('visible');
+    positionTooltip(clientX, clientY);
+  }
+
+  function positionTooltip(clientX, clientY) {
+    const t = els.tooltip;
+    const vw = window.innerWidth;
+    // Clamp horizontal so it never spills off-screen.
+    const halfW = t.offsetWidth / 2;
+    const x = Math.max(halfW + 12, Math.min(vw - halfW - 12, clientX));
+    t.style.left = x + 'px';
+    t.style.top  = clientY + 'px';
+  }
+
+  function hideHover() {
+    if (hoveredId === null) return;
+    hoveredId = null;
+    els.hoverRing.classList.remove('visible');
+    els.tooltip.classList.remove('visible');
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  // ----- state machine ------------------------------------------------
   function setState(next) {
-    const current = els.body.dataset.state;
-    if (current === next) return;
+    if (els.body.dataset.state === next) return;
     els.body.dataset.state = next;
     els.overviewToggle.setAttribute('aria-pressed', next === 'overview' ? 'true' : 'false');
-    els.overviewToggle.textContent = next === 'overview' ? 'focus' : 'show full painting';
-    const { proverb } = pickProverb(offset);
+    els.overviewToggle.textContent = next === 'overview' ? 'focus' : 'explore the painting';
+    hideHover();
+    const { proverb } = currentProverb();
     paintCanvas(next, proverb.crop);
   }
 
   function toggleState() {
-    const s = els.body.dataset.state;
-    setState(s === 'overview' ? 'focus' : 'overview');
+    setState(els.body.dataset.state === 'overview' ? 'focus' : 'overview');
   }
 
   // ----- card content -------------------------------------------------
@@ -178,9 +331,10 @@
     });
   }
 
-  function render(reason = 'init') {
-    const { proverb: p, date } = pickProverb(offset);
-    els.date.textContent = fmtDate(date);
+  function render() {
+    const { proverb: p, date, exploring } = currentProverb();
+    els.date.textContent = exploring ? 'exploring' : fmtDate(date);
+    els.date.classList.toggle('exploring', exploring);
     els.counter.textContent = `№ ${p.id} / ${PROVERBS.length}`;
     els.ru_q.textContent = p.ru;
     els.en_q.textContent = p.en;
@@ -192,26 +346,34 @@
     if (quizActive) hideQuiz();
     const state = els.body.dataset.state;
     if (state === 'loading') {
-      // First paint: start at overview, then ease into focus.
       paintCanvas('overview', p.crop);
-      requestAnimationFrame(() => {
-        setState('overview');
-        // Hold the wide shot briefly, then zoom in.
-        setTimeout(() => setState('focus'), 1100);
-      });
+      // Use setTimeout (not rAF) so the boot animation runs even in
+      // backgrounded/inactive tabs where rAF is throttled.
+      setTimeout(() => setState('overview'), 40);
+      setTimeout(() => setState('focus'), 1200);
     } else {
-      // Always update both reticle (for overview) and canvas (current state).
       paintCanvas(state, p.crop);
+    }
+  }
+
+  function selectProverb(p) {
+    selectedId = p.id;
+    if (els.body.dataset.state !== 'focus') {
+      // setState will repaint with currentProverb (which is now this one).
+      render();
+      setState('focus');
+    } else {
+      render();
     }
   }
 
   // ----- quiz ---------------------------------------------------------
   function buildQuiz() {
-    const { proverb: correct } = pickProverb(offset);
+    const { proverb: correct } = currentProverb();
     const others = PROVERBS.filter(p => p.id !== correct.id);
-    const seed = hash(dateKey(dateForOffset(offset)) + 'q');
+    const seed = hash(String(correct.id) + 'q');
     const distractors = [];
-    for (let i = 0; distractors.length < 2 && i < 100; i++) {
+    for (let i = 0; distractors.length < 2 && i < 200; i++) {
       const cand = others[(seed + i * 73) % others.length];
       if (!distractors.find(d => d.id === cand.id)) distractors.push(cand);
     }
@@ -258,8 +420,7 @@
     els.quizToggle.textContent = 'test me';
   }
   function toggleQuiz() {
-    if (quizActive) hideQuiz();
-    else showQuiz();
+    if (quizActive) hideQuiz(); else showQuiz();
   }
 
   // ----- wiring -------------------------------------------------------
@@ -272,48 +433,111 @@
 
   function go(deltaDays) {
     markInteracted();
+    hideHover();
+    selectedId = null; // arrow nav resets to the day's pick
     offset += deltaDays;
-    render('nav');
+    render();
+  }
+
+  function handleTap(clientX, clientY) {
+    markInteracted();
+    const { ix, iy } = screenToImage(clientX, clientY);
+    const hit = hitTest(ix, iy);
+    if (hit) {
+      selectProverb(hit);
+    } else {
+      toggleState();
+    }
   }
 
   function wire() {
     els.prev.addEventListener('click', () => go(-1));
     els.next.addEventListener('click', () => go(+1));
-    els.today.addEventListener('click', () => { markInteracted(); offset = 0; render('today'); });
+    els.today.addEventListener('click', () => {
+      markInteracted();
+      hideHover();
+      selectedId = null;
+      offset = 0;
+      render();
+    });
     els.quizToggle.addEventListener('click', () => { markInteracted(); toggleQuiz(); });
     els.overviewToggle.addEventListener('click', () => { markInteracted(); toggleState(); });
 
-    // Tap the painting toggles state.
-    els.canvas.addEventListener('click', () => { markInteracted(); toggleState(); });
-
-    // Drag horizontally to scrub through days.
-    let dragX = null;
+    // Pointer: distinguish tap vs horizontal drag.
+    let downX = null, downY = null, downTime = 0;
     els.canvas.addEventListener('pointerdown', (e) => {
       if (e.target !== els.canvas) return;
-      dragX = e.clientX;
+      downX = e.clientX; downY = e.clientY; downTime = performance.now();
     });
     window.addEventListener('pointerup', (e) => {
-      if (dragX === null) return;
-      const dx = e.clientX - dragX;
-      dragX = null;
-      if (Math.abs(dx) > 70) go(dx < 0 ? +1 : -1);
+      if (downX === null) return;
+      const dx = e.clientX - downX;
+      const dy = e.clientY - downY;
+      const dist = Math.hypot(dx, dy);
+      const dt  = performance.now() - downTime;
+      downX = null;
+      if (dist < 12 && dt < 600) {
+        handleTap(e.clientX, e.clientY);
+      } else if (Math.abs(dx) > 70 && Math.abs(dy) < 60) {
+        go(dx < 0 ? +1 : -1);
+      }
+    });
+
+    // Hover: explore on devices that actually hover.
+    const supportsHover = window.matchMedia('(hover: hover)').matches;
+    if (supportsHover) {
+      let throttled = false;
+      els.canvas.addEventListener('mousemove', (e) => {
+        if (throttled) return;
+        throttled = true;
+        setTimeout(() => { throttled = false; }, 16);
+        const { ix, iy } = screenToImage(e.clientX, e.clientY);
+        const hit = hitTest(ix, iy);
+        if (hit) showHover(hit, e.clientX, e.clientY);
+        else hideHover();
+      });
+      els.canvas.addEventListener('mouseleave', hideHover);
+    }
+
+    // Wheel zoom (focus state only). Trackpad pinch fires wheel with ctrlKey.
+    els.canvas.addEventListener('wheel', (e) => {
+      if (els.body.dataset.state !== 'focus' || !focusView) return;
+      e.preventDefault();
+      // Delta normalized: deltaY positive = scroll down = zoom out.
+      const intensity = e.ctrlKey ? 0.012 : 0.0022; // pinch is more aggressive
+      const factor = Math.exp(-e.deltaY * intensity);
+      zoomAt(factor, e.clientX, e.clientY);
+    }, { passive: false });
+
+    // Double-click resets zoom to default focus on the current proverb.
+    els.canvas.addEventListener('dblclick', () => {
+      if (els.body.dataset.state !== 'focus') return;
+      const { proverb } = currentProverb();
+      focusView = defaultFocusFor(proverb.crop, window.innerWidth, window.innerHeight);
+      paintCanvas('focus', proverb.crop, { resetView: false, animated: true });
     });
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowLeft') go(-1);
+      if (e.key === 'ArrowLeft')  go(-1);
       else if (e.key === 'ArrowRight') go(+1);
       else if (e.key === ' ' || e.key === 'Enter') {
         if (document.activeElement === document.body) {
-          e.preventDefault();
-          toggleQuiz();
+          e.preventDefault(); toggleQuiz();
         }
       } else if (e.key === 'f' || e.key === 'F') toggleState();
-      else if (e.key === 't' || e.key === 'T') { offset = 0; render('today'); }
+      else if (e.key === 'Escape') {
+        if (selectedId != null) { selectedId = null; render(); }
+        else if (els.body.dataset.state === 'focus') setState('overview');
+      }
+      else if (e.key === 't' || e.key === 'T') {
+        selectedId = null; offset = 0; render();
+      }
     });
 
     window.addEventListener('resize', () => {
+      hideHover();
       const state = els.body.dataset.state;
-      const { proverb } = pickProverb(offset);
+      const { proverb } = currentProverb();
       paintCanvas(state, proverb.crop);
     });
   }
@@ -324,7 +548,7 @@
       const data = await res.json();
       PROVERBS = data.proverbs;
       wire();
-      render('boot');
+      render();
     } catch (err) {
       document.body.textContent = 'Failed to load proverbs: ' + err.message;
     }

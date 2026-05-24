@@ -9,3 +9,5 @@ focus-city-app/dist/
 focus-city-app/.vite/
 focus-city-legacy/
 
+.claude/launch.json
+.claude/launch.json
